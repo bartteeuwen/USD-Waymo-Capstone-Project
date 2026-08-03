@@ -2,4 +2,4 @@ streamlit
 pandas
 plotly
 google-cloud-storage
-protobuf>=3.20.0,<4.25.0
+protobuf>=3.20.0,<5.0.0
