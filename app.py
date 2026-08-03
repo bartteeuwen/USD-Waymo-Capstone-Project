@@ -137,3 +137,46 @@ try:
 except Exception as e:
     st.error(f"Error loading dataset: {e}")
     st.info("Ensure `triaged_scenarios.csv` exists in your repository.")
+
+import struct
+from google.cloud import storage
+from waymo_open_dataset.protos import scenario_pb2
+
+@st.cache_data
+def load_gcs_index():
+    return pd.read_parquet("data/tfrecord_index.parquet")
+
+def fetch_raw_scenario(scenario_id, index_df):
+    try:
+        # 1. Look up the exact byte coordinates in the index
+        target_info = index_df[index_df['scenario_id'] == scenario_id].iloc[0]
+        
+        # 2. Connect to GCS
+        client = storage.Client()
+        bucket_name = "waymo_open_dataset_motion_v_1_2_0"
+        bucket = client.bucket(bucket_name)
+        
+        # Clean the URI to get just the blob path
+        blob_name = target_info['gcs_uri'].replace(f"gs://{bucket_name}/", "")
+        blob = bucket.blob(blob_name)
+        
+        # 3. Calculate the byte range
+        byte_start = target_info['byte_offset']
+        byte_end = byte_start + target_info['byte_length'] - 1
+        
+        # 4. Fetch ONLY those specific bytes
+        raw_bytes = blob.download_as_bytes(start=byte_start, end=byte_end)
+        
+        # 5. Strip the TFRecord header (8 bytes length + 4 bytes CRC) to isolate the protobuf data
+        data_length = struct.unpack('<Q', raw_bytes[:8])[0]
+        protobuf_bytes = raw_bytes[12 : 12 + data_length]
+        
+        # 6. Parse and return the full animated scenario!
+        scenario = scenario_pb2.Scenario()
+        scenario.ParseFromString(protobuf_bytes)
+        
+        return scenario
+        
+    except Exception as e:
+        st.error(f"Failed to fetch scenario: {e}")
+        return None
