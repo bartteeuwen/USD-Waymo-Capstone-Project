@@ -1,15 +1,12 @@
+import os
+os.environ["PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION"] = "python"
+
 import json
 import struct
 import pandas as pd
 import plotly.express as px
 import streamlit as st
 from google.cloud import storage
-from waymo_open_dataset.protos import scenario_pb2
-import os
-os.environ["PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION"] = "python"
-
-# Now import your other libraries and scenario_pb2
-import streamlit as st
 from waymo_open_dataset.protos import scenario_pb2
 
 # --- Page configuration ---
