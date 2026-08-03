@@ -19,7 +19,7 @@ derived from **XGBoost (Tuned)** and **Graph Neural Network (GNN)** ensemble mod
 # Load Main Summary Dataset
 @st.cache_data
 def load_summary_data():
-    return pd.read_csv("triaged_scenarios.csv")
+    return pd.read_csv("data/triaged_scenarios.csv")
 
 # Helper function to load trajectory data only when requested
 @st.cache_data
