@@ -35,8 +35,14 @@ def load_gcs_index():
 def fetch_raw_scenario(scenario_id, index_df):
     """Fetches and parses a single scenario protobuf directly from GCS using byte offsets."""
     try:
-        # 1. Look up byte coordinates
-        target_info = index_df[index_df['scenario_id'] == scenario_id].iloc[0]
+        # 1. Safely look up byte coordinates without triggering positional index out-of-bounds
+        matched_records = index_df[index_df['scenario_id'] == str(scenario_id)]
+        
+        if matched_records.empty:
+            st.error(f"Scenario ID '{scenario_id}' was not found in the TFRecord index.")
+            return None
+            
+        target_info = matched_records.iloc[0]
         
         # 2. Authenticate with GCP Secret
         gcp_credentials = json.loads(st.secrets["GCP_KEY"])
@@ -45,12 +51,12 @@ def fetch_raw_scenario(scenario_id, index_df):
         bucket_name = "waymo_open_dataset_motion_v_1_2_0"
         bucket = client.bucket(bucket_name)
         
-        blob_name = target_info['gcs_uri'].replace(f"gs://{bucket_name}/", "")
+        blob_name = str(target_info['gcs_uri']).replace(f"gs://{bucket_name}/", "")
         blob = bucket.blob(blob_name)
         
         # 3. HTTP Range Request
-        byte_start = target_info['byte_offset']
-        byte_end = byte_start + target_info['byte_length'] - 1
+        byte_start = int(target_info['byte_offset'])
+        byte_end = byte_start + int(target_info['byte_length']) - 1
         raw_bytes = blob.download_as_bytes(start=byte_start, end=byte_end)
         
         # 4. Strip TFRecord Header (8 bytes length + 4 bytes CRC)
@@ -96,24 +102,33 @@ try:
     df = load_summary_data()
     gcs_index = load_gcs_index()
     
+    # Ensure scenario_id is stored as string in both dataframes
+    if 'scenario_id' in df.columns:
+        df['scenario_id'] = df['scenario_id'].astype(str)
+    if 'scenario_id' in gcs_index.columns:
+        gcs_index['scenario_id'] = gcs_index['scenario_id'].astype(str)
+    
     # --- Sidebar Controls ---
     st.sidebar.header("⚙️ Risk Filter Controls")
     risk_threshold = st.sidebar.slider(
         "Minimum Risk Score Threshold",
         min_value=0.0, max_value=1.0, value=0.50, step=0.05
     )
-    valid_physics_only = st.sidebar.checkbox("Exclude Physical Anomalies (> 38 m/s)", value=True)
     
-    filtered_df = df[df['predicted_risk_probability'] >= risk_threshold]
-    if valid_physics_only:
+    filtered_df = df.copy()
+    if 'predicted_risk_probability' in filtered_df.columns:
+        filtered_df = filtered_df[filtered_df['predicted_risk_probability'] >= risk_threshold]
+        
+    valid_physics_only = st.sidebar.checkbox("Exclude Physical Anomalies (> 38 m/s)", value=True)
+    if valid_physics_only and 'is_valid_physics' in filtered_df.columns:
         filtered_df = filtered_df[filtered_df['is_valid_physics'] == True]
     
     # --- KPI Summary Cards ---
     col1, col2, col3, col4 = st.columns(4)
     col1.metric("Total Evaluated Scenes", f"{len(df):,}")
-    col2.metric("Triaged High-Risk Scenes", f"{len(filtered_df):,}", delta=f"{len(filtered_df)/len(df)*100:.1f}%")
-    col3.metric("Max Predicted Risk Score", f"{df['predicted_risk_probability'].max():.4f}")
-    col4.metric("Avg Risk Score (Filtered)", f"{filtered_df['predicted_risk_probability'].mean():.4f}" if len(filtered_df) > 0 else "N/A")
+    col2.metric("Triaged High-Risk Scenes", f"{len(filtered_df):,}", delta=f"{len(filtered_df)/len(df)*100:.1f}%" if len(df) > 0 else "0%")
+    col3.metric("Max Predicted Risk Score", f"{df['predicted_risk_probability'].max():.4f}" if 'predicted_risk_probability' in df.columns else "N/A")
+    col4.metric("Avg Risk Score (Filtered)", f"{filtered_df['predicted_risk_probability'].mean():.4f}" if len(filtered_df) > 0 and 'predicted_risk_probability' in filtered_df.columns else "N/A")
     
     st.divider()
     
@@ -122,11 +137,18 @@ try:
     default_cols = [c for c in ['scenario_id', 'predicted_risk_probability', 'target_risk_matrix', 'min_inter_agent_dist', 'avg_agent_velocity', 'max_deceleration'] if c in df.columns]
     selected_cols = st.multiselect("Select Display Columns", options=list(df.columns), default=default_cols)
     
-    st.dataframe(
-        filtered_df[selected_cols].style.highlight_max(axis=0, subset=['predicted_risk_probability'], color='#f8d7da'),
-        use_container_width=True,
-        height=300
-    )
+    if not filtered_df.empty and selected_cols:
+        style_df = filtered_df[selected_cols]
+        if 'predicted_risk_probability' in selected_cols:
+            st.dataframe(
+                style_df.style.highlight_max(axis=0, subset=['predicted_risk_probability'], color='#f8d7da'),
+                use_container_width=True,
+                height=300
+            )
+        else:
+            st.dataframe(style_df, use_container_width=True, height=300)
+    else:
+        st.warning("No scenarios match your filter criteria or no display columns were selected.")
 
     st.divider()
 
@@ -134,9 +156,10 @@ try:
     st.subheader("🔍 Scenario Deep-Dive Inspector")
     
     if not filtered_df.empty:
+        scenario_options = filtered_df['scenario_id'].unique()
         selected_scenario_id = st.selectbox(
             "Select Scenario ID to inspect:", 
-            options=filtered_df['scenario_id'].unique()
+            options=scenario_options
         )
         
         scene_info = df[df['scenario_id'] == selected_scenario_id].iloc[0]
@@ -150,7 +173,11 @@ try:
                 st.write("**Agent Composition**")
                 agent_counts = pd.DataFrame({
                     'Agent Type': ['Vehicles', 'Pedestrians', 'Cyclists'],
-                    'Count': [scene_info['vehicle_count'], scene_info['pedestrian_count'], scene_info['cyclist_count']]
+                    'Count': [
+                        scene_info.get('vehicle_count', 0), 
+                        scene_info.get('pedestrian_count', 0), 
+                        scene_info.get('cyclist_count', 0)
+                    ]
                 })
                 fig_agents = px.bar(agent_counts, x='Agent Type', y='Count', title="Agent Counts")
                 st.plotly_chart(fig_agents, use_container_width=True)
@@ -159,7 +186,12 @@ try:
                 st.write("**Map Infrastructure Elements**")
                 map_counts = pd.DataFrame({
                     'Feature': ['Lanes', 'Stop Signs', 'Crosswalks', 'Speed Bumps'],
-                    'Count': [scene_info['lane_count'], scene_info['stop_sign_count'], scene_info['crosswalk_count'], scene_info['speed_bump_count']]
+                    'Count': [
+                        scene_info.get('lane_count', 0), 
+                        scene_info.get('stop_sign_count', 0), 
+                        scene_info.get('crosswalk_count', 0), 
+                        scene_info.get('speed_bump_count', 0)
+                    ]
                 })
                 fig_map = px.bar(map_counts, x='Feature', y='Count', title="Map Features")
                 st.plotly_chart(fig_map, use_container_width=True)
