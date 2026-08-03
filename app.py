@@ -35,8 +35,14 @@ def load_gcs_index():
 def fetch_raw_scenario(scenario_id, index_df):
     """Fetches and parses a single scenario protobuf directly from GCS using byte offsets."""
     try:
-        # 1. Safely look up byte coordinates without triggering positional index out-of-bounds
-        matched_records = index_df[index_df['scenario_id'] == str(scenario_id)]
+        clean_id = str(scenario_id).strip().lower()
+        
+        # 1. First attempt: Exact string match
+        matched_records = index_df[index_df['scenario_id'] == clean_id]
+        
+        # 2. Fallback attempt: Partial/substring match in case IDs contain extensions or paths
+        if matched_records.empty and 'scenario_id' in index_df.columns:
+            matched_records = index_df[index_df['scenario_id'].astype(str).str.contains(clean_id, na=False, regex=False)]
         
         if matched_records.empty:
             st.error(f"Scenario ID '{scenario_id}' was not found in the TFRecord index.")
@@ -44,7 +50,7 @@ def fetch_raw_scenario(scenario_id, index_df):
             
         target_info = matched_records.iloc[0]
         
-        # 2. Authenticate with GCP Secret
+        # 3. Authenticate with GCP Secret
         gcp_credentials = json.loads(st.secrets["GCP_KEY"])
         client = storage.Client.from_service_account_info(gcp_credentials)
         
@@ -54,16 +60,16 @@ def fetch_raw_scenario(scenario_id, index_df):
         blob_name = str(target_info['gcs_uri']).replace(f"gs://{bucket_name}/", "")
         blob = bucket.blob(blob_name)
         
-        # 3. HTTP Range Request
+        # 4. HTTP Range Request
         byte_start = int(target_info['byte_offset'])
         byte_end = byte_start + int(target_info['byte_length']) - 1
         raw_bytes = blob.download_as_bytes(start=byte_start, end=byte_end)
         
-        # 4. Strip TFRecord Header (8 bytes length + 4 bytes CRC)
+        # 5. Strip TFRecord Header (8 bytes length + 4 bytes CRC)
         data_length = struct.unpack('<Q', raw_bytes[:8])[0]
         protobuf_bytes = raw_bytes[12 : 12 + data_length]
         
-        # 5. Parse Protobuf
+        # 6. Parse Protobuf
         scenario = scenario_pb2.Scenario()
         scenario.ParseFromString(protobuf_bytes)
         return scenario
@@ -102,11 +108,11 @@ try:
     df = load_summary_data()
     gcs_index = load_gcs_index()
     
-    # Ensure scenario_id is stored as string in both dataframes
+    # --- Data Cleaning & Normalization ---
     if 'scenario_id' in df.columns:
-        df['scenario_id'] = df['scenario_id'].astype(str)
+        df['scenario_id'] = df['scenario_id'].astype(str).str.strip().str.lower()
     if 'scenario_id' in gcs_index.columns:
-        gcs_index['scenario_id'] = gcs_index['scenario_id'].astype(str)
+        gcs_index['scenario_id'] = gcs_index['scenario_id'].astype(str).str.strip().str.lower()
     
     # --- Sidebar Controls ---
     st.sidebar.header("⚙️ Risk Filter Controls")
