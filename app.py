@@ -24,14 +24,16 @@ def load_summary_data():
 # Helper function to load trajectory data only when requested
 @st.cache_data
 def load_scenario_trajectories(scenario_id):
-    """
-    Placeholder for loading X/Y trajectory data.
-    Replace this with your actual loading logic (e.g., querying a parquet/pkl file).
-    """
-    # Example snippet if you have a combined trajectories parquet file:
-    # traj_df = pd.read_parquet("data/agent_trajectories.parquet")
-    # return traj_df[traj_df['scenario_id'] == scenario_id]
-    return None
+    try:
+        # Update "agent_trajectories.csv" to whatever your file is actually named!
+        traj_df = pd.read_csv("data/agent_trajectories.csv") 
+        
+        # This filters the massive dataset down to just the single scenario you clicked on
+        return traj_df[traj_df['scenario_id'] == scenario_id]
+        
+    except Exception as e:
+        st.error(f"Could not load trajectory data: {e}")
+        return None
 
 try:
     df = load_summary_data()
