@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
+import plotly.express as px
 
 # Page configuration
 st.set_page_config(
@@ -16,14 +16,25 @@ This dashboard ranks autonomous driving scene graphs based on predicted collisio
 derived from **XGBoost (Tuned)** and **Graph Neural Network (GNN)** ensemble models.
 """)
 
-# Load Dataset
+# Load Main Summary Dataset
 @st.cache_data
-def load_data():
-    df = pd.read_csv("data/triaged_scenarios.csv")
-    return df
+def load_summary_data():
+    return pd.read_csv("triaged_scenarios.csv")
+
+# Helper function to load trajectory data only when requested
+@st.cache_data
+def load_scenario_trajectories(scenario_id):
+    """
+    Placeholder for loading X/Y trajectory data.
+    Replace this with your actual loading logic (e.g., querying a parquet/pkl file).
+    """
+    # Example snippet if you have a combined trajectories parquet file:
+    # traj_df = pd.read_parquet("data/agent_trajectories.parquet")
+    # return traj_df[traj_df['scenario_id'] == scenario_id]
+    return None
 
 try:
-    df = load_data()
+    df = load_summary_data()
     
     # --- Sidebar Controls ---
     st.sidebar.header("⚙️ Risk Filter Controls")
@@ -36,7 +47,12 @@ try:
         step=0.05
     )
     
+    # Filter anomalies toggle
+    valid_physics_only = st.sidebar.checkbox("Exclude Physical Anomalies (> 38 m/s)", value=True)
+    
     filtered_df = df[df['predicted_risk_probability'] >= risk_threshold]
+    if valid_physics_only:
+        filtered_df = filtered_df[filtered_df['is_valid_physics'] == True]
     
     # --- KPI Summary Cards ---
     col1, col2, col3, col4 = st.columns(4)
@@ -50,15 +66,72 @@ try:
     # --- Data Table ---
     st.subheader("📋 Triaged High-Risk Scenarios")
     
-    default_cols = [c for c in ['predicted_risk_probability', 'predicted_critical_class', 'min_inter_agent_dist', 'avg_agent_velocity', 'velocity_std'] if c in df.columns]
+    default_cols = [c for c in ['scenario_id', 'predicted_risk_probability', 'target_risk_matrix', 'min_inter_agent_dist', 'avg_agent_velocity', 'max_deceleration'] if c in df.columns]
     selected_cols = st.multiselect("Select Display Columns", options=list(df.columns), default=default_cols)
     
     st.dataframe(
         filtered_df[selected_cols].style.highlight_max(axis=0, subset=['predicted_risk_probability'], color='#f8d7da'),
         use_container_width=True,
-        height=400
+        height=300
     )
+
+    st.divider()
+
+    # --- Scenario Deep Dive Section ---
+    st.subheader("🔍 Scenario Deep-Dive Inspector")
+    
+    if not filtered_df.empty:
+        # Let user select one scenario to inspect from the filtered list
+        selected_scenario_id = st.selectbox(
+            "Select Scenario ID to inspect:", 
+            options=filtered_df['scenario_id'].unique()
+        )
+        
+        scene_info = df[df['scenario_id'] == selected_scenario_id].iloc[0]
+        
+        tab1, tab2 = st.tabs(["📊 Scene Breakdown", "📍 Spatial Top-Down Replay"])
+        
+        with tab1:
+            col_a, col_b = st.columns(2)
+            
+            with col_a:
+                st.write("**Agent Composition**")
+                agent_counts = pd.DataFrame({
+                    'Agent Type': ['Vehicles', 'Pedestrians', 'Cyclists'],
+                    'Count': [scene_info['vehicle_count'], scene_info['pedestrian_count'], scene_info['cyclist_count']]
+                })
+                fig_agents = px.bar(agent_counts, x='Agent Type', y='Count', title="Agent Counts")
+                st.plotly_chart(fig_agents, use_container_width=True)
+                
+            with col_b:
+                st.write("**Map Infrastructure Elements**")
+                map_counts = pd.DataFrame({
+                    'Feature': ['Lanes', 'Stop Signs', 'Crosswalks', 'Speed Bumps'],
+                    'Count': [scene_info['lane_count'], scene_info['stop_sign_count'], scene_info['crosswalk_count'], scene_info['speed_bump_count']]
+                })
+                fig_map = px.bar(map_counts, x='Feature', y='Count', title="Map Features")
+                st.plotly_chart(fig_map, use_container_width=True)
+
+        with tab2:
+            st.markdown(f"**Trajectory Visualization for Scenario:** `{selected_scenario_id}`")
+            
+            # Load raw trajectory file when required
+            traj_data = load_scenario_trajectories(selected_scenario_id)
+            
+            if traj_data is not None and not traj_data.empty:
+                fig_replay = px.scatter(
+                    traj_data, 
+                    x='pos_x', 
+                    y='pos_y', 
+                    color='agent_type',
+                    title=f"2D Agent Trajectories ({selected_scenario_id})"
+                )
+                st.plotly_chart(fig_replay, use_container_width=True)
+            else:
+                st.info("💡 Connect your trajectory dataframe in `load_scenario_trajectories()` to render the 2D spatial map here.")
+    else:
+        st.warning("No scenarios match the current filter criteria.")
 
 except Exception as e:
     st.error(f"Error loading dataset: {e}")
-    st.info("Ensure `data/triaged_scenarios.csv` exists in your repository.")
+    st.info("Ensure `triaged_scenarios.csv` exists in your repository.")
