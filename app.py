@@ -4,7 +4,7 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 from google.cloud import storage
-import scenario_pb2
+from waymo_open_dataset.protos import scenario_pb2
 
 # --- Page configuration ---
 st.set_page_config(
