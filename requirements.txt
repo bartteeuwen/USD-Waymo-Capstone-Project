@@ -2,5 +2,5 @@ streamlit
 pandas
 plotly
 google-cloud-storage
-protobuf>=3.20.0,<4.24.0
-https://files.pythonhosted.org/packages/a7/67/7a8ebf852b7e12eb7600bb433104e1be92d4ca4bf45938bf8cfa0b86b5e0/waymo_open_dataset_tf_2_12_0-1.6.7-py3-none-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl
+protobuf
+waymo-open-dataset-tf-2-12-0==1.6.7
