@@ -138,21 +138,20 @@ except Exception as e:
     st.error(f"Error loading dataset: {e}")
     st.info("Ensure `triaged_scenarios.csv` exists in your repository.")
 
-import struct
+import json
+import streamlit as st
 from google.cloud import storage
-from waymo_open_dataset.protos import scenario_pb2
-
-@st.cache_data
-def load_gcs_index():
-    return pd.read_parquet("data/tfrecord_index.parquet")
 
 def fetch_raw_scenario(scenario_id, index_df):
     try:
         # 1. Look up the exact byte coordinates in the index
         target_info = index_df[index_df['scenario_id'] == scenario_id].iloc[0]
         
-        # 2. Connect to GCS
-        client = storage.Client()
+        # 2. Authenticate using Streamlit Secrets
+        gcp_credentials = json.loads(st.secrets["GCP_KEY"])
+        client = storage.Client.from_service_account_info(gcp_credentials)
+        
+        # Connect to the Waymo bucket
         bucket_name = "waymo_open_dataset_motion_v_1_2_0"
         bucket = client.bucket(bucket_name)
         
@@ -167,7 +166,7 @@ def fetch_raw_scenario(scenario_id, index_df):
         # 4. Fetch ONLY those specific bytes
         raw_bytes = blob.download_as_bytes(start=byte_start, end=byte_end)
         
-        # 5. Strip the TFRecord header (8 bytes length + 4 bytes CRC) to isolate the protobuf data
+        # 5. Strip the TFRecord header (8 bytes length + 4 bytes CRC)
         data_length = struct.unpack('<Q', raw_bytes[:8])[0]
         protobuf_bytes = raw_bytes[12 : 12 + data_length]
         
