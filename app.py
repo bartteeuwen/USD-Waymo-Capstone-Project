@@ -7,10 +7,19 @@ st.set_page_config(
     page_title="Waymo AV Safety Triage Hub", page_icon="🚘", layout="wide"
 )
 
-# --- PUBLIC GCS BUCKET LINK ---
+# --- CONFIGURATION & PUBLIC GCS LINK ---
 GCS_VIDEO_BASE_URL = (
     "https://storage.googleapis.com/waymo-capstone-rendered-videos"
 )
+
+# Exact Analytical Dataset Specs from Capstone Paper
+TOTAL_EVALUATED_DATASET_SCENARIOS = 6311
+CRITICAL_COMPLEXITY_COUNT = int(
+    TOTAL_EVALUATED_DATASET_SCENARIOS * 0.41
+)  # 2,588 (41%)
+STANDARD_COMPLEXITY_COUNT = int(
+    TOTAL_EVALUATED_DATASET_SCENARIOS * 0.59
+)  # 3,723 (59%)
 
 
 # --- DATA LOADING & FEATURE ENRICHMENT ---
@@ -19,7 +28,6 @@ def load_data():
   df = pd.read_csv("high_risk_scenarios_valid.csv")
   df["scenario_id"] = df["scenario_id"].astype(str).str.strip().str.lower()
 
-  # Heuristic fallback for dual validation
   if "heuristic_risk_score" not in df.columns:
     df["heuristic_risk_score"] = np.clip(
         (np.abs(df["max_deceleration"]) / 10.0) * 0.4
@@ -29,7 +37,6 @@ def load_data():
         0.98,
     )
 
-  # Infer Road Context from Map Features & Telemetry
   def classify_road_context(row):
     vel = row.get("max_velocity_mps", 0)
     peds = row.get("pedestrian_count", 0)
@@ -55,7 +62,6 @@ except Exception as e:
 # --- SIDEBAR NAVIGATION & FILTERS ---
 st.sidebar.title("🚘 Waymo AV Safety Hub")
 
-# Cleaned Page Names (Removed Movie Icon & BEV)
 page = st.sidebar.radio(
     "Select View Mode:",
     ["📊 Executive Triage Dashboard", "Visual Inspection & Feedback"],
@@ -66,7 +72,7 @@ st.sidebar.subheader("🎯 Triage Thresholds")
 
 # Risk Probability Slider
 min_risk_prob = st.sidebar.slider(
-    "Minimum GCN Risk Probability Score:",
+    "Minimum Model Risk Probability Score:",
     min_value=0.0,
     max_value=1.0,
     value=0.50,
@@ -76,7 +82,6 @@ min_risk_prob = st.sidebar.slider(
 # Filter dataset based on active threshold
 filtered_df = df[df["predicted_risk_probability"] >= min_risk_prob].copy()
 
-# Initialize Session State for Active Learning Feedback Loop
 if "feedback_db" not in st.session_state:
   st.session_state.feedback_db = {}
 
@@ -87,36 +92,26 @@ if "feedback_db" not in st.session_state:
 if page == "📊 Executive Triage Dashboard":
   st.title("🚘 Autonomous Vehicle Risk Triage & Productivity Engine")
   st.markdown(
-      "GCN Spatial-Temporal Graph Attention Scoring & Human-in-the-Loop Triage"
+      "Spatial-Temporal Modeling & Human-in-the-Loop Active Triage Pipeline"
   )
   st.divider()
 
-  # --- TOP KPI ROW: FIXED TOTAL OF 20 EVALUATED SCENARIOS ---
+  # --- TOP KPI ROW: EXACT DATASET DISTRIBUTION FROM CAPSTONE PAPER ---
   m1, m2, m3, m4 = st.columns(4)
 
-  total_scenarios = len(df)  # Always 20 evaluated scenarios
-  flagged_scenarios = len(filtered_df)
-
-  # False positive suppression metrics
-  heuristic_flags = len(df[df["heuristic_risk_score"] >= 0.70])
-  gcn_flags = len(df[df["predicted_risk_probability"] >= 0.70])
-  false_positives_suppressed = max(0, heuristic_flags - gcn_flags)
-
-  # Productivity Time Saved: ~5 minutes saved per suppressed false positive
+  # Suppressed False Positives calculation comparing Heuristic vs Model predictions
+  heuristic_high = len(df[df["heuristic_risk_score"] >= 0.70])
+  model_high = len(df[df["predicted_risk_probability"] >= 0.70])
+  false_positives_suppressed = max(0, heuristic_high - model_high)
   hours_saved = round((false_positives_suppressed * 5) / 60, 1)
 
-  # KPI Metrics
-  m1.metric("Total Evaluated Scenarios", f"{total_scenarios}")
-  m2.metric(
-      "High-Risk Triage Queue",
-      f"{flagged_scenarios}",
-      f"{flagged_scenarios/total_scenarios:.0%} of total",
-  )
-  m3.metric("GCN Model Precision", "94.2%", "+12.8% vs Rule Baseline")
+  m1.metric("Total Evaluated Dataset", f"{TOTAL_EVALUATED_DATASET_SCENARIOS:,}")
+  m2.metric("Critical Complexity (41%)", f"{CRITICAL_COMPLEXITY_COUNT:,}")
+  m3.metric("Standard Complexity (59%)", f"{STANDARD_COMPLEXITY_COUNT:,}")
   m4.metric(
       "⏱️ Review Time Saved",
       f"{hours_saved} Hours",
-      f"{false_positives_suppressed} False Alarms Filtered",
+      f"{false_positives_suppressed} False Alarms Suppressed",
   )
 
   st.divider()
@@ -124,11 +119,10 @@ if page == "📊 Executive Triage Dashboard":
   # --- SECTION: INTERACTIVE HIGH-RISK SCENARIOS TABLE ---
   st.subheader("📋 Triaged High-Risk Scenarios")
   st.caption(
-      f"Showing {flagged_scenarios} of {total_scenarios} scenarios meeting"
-      " the current risk threshold."
+      f"Showing **{len(filtered_df)}** scenarios meeting current threshold"
+      f" (out of **{len(df)}** rendered inspection sample records)."
   )
 
-  # Column Selector
   all_columns = [
       "scenario_id",
       "predicted_risk_probability",
@@ -153,7 +147,6 @@ if page == "📊 Executive Triage Dashboard":
       "Choose Columns to Display:", options=all_columns, default=default_cols
   )
 
-  # Fixed Search Filter Logic
   search_query = st.text_input(
       "🔍 Search Scenario ID or Road Context:", placeholder="e.g. Corridor or 4b9..."
   )
@@ -192,20 +185,16 @@ elif page == "Visual Inspection & Feedback":
   )
   st.divider()
 
-  total_scenarios = len(df)
+  total_rendered = len(df)
   flagged_scenarios = len(filtered_df)
 
   if filtered_df.empty:
-    st.warning(
-        "No scenarios match the current threshold filter. Lower the slider in"
-        " the sidebar."
-    )
+    st.warning("No scenarios match the current threshold filter.")
   else:
-    # Scenario Selector displaying counts out of 20
     scenario_list = filtered_df["scenario_id"].unique().tolist()
     selected_sid = st.selectbox(
         f"Select Scenario ID to Inspect (Showing {flagged_scenarios} of"
-        f" {total_scenarios} scenarios):",
+        f" {total_rendered} sample scenarios):",
         options=scenario_list,
     )
 
@@ -216,7 +205,6 @@ elif page == "Visual Inspection & Feedback":
 
     col_video, col_meta = st.columns([1.3, 1.0])
 
-    # --- LEFT COLUMN: VIDEO PLAYBACK & ACTIVE FEEDBACK ---
     with col_video:
       st.subheader("Trajectory Stream")
       st.video(video_url, autoplay=True, loop=True)
@@ -224,16 +212,9 @@ elif page == "Visual Inspection & Feedback":
           "🔴 Waymo SDC | 🔵 Vehicle | 🟡 Pedestrian | 🟢 Cyclist | 💖 Risk"
           " Hazard Zone"
       )
-
       st.divider()
 
-      # --- HUMAN-IN-THE-LOOP FEEDBACK FORM ---
       st.subheader("📝 Safety Engineer Validation")
-      st.caption(
-          "Rate this scenario to feed back into active learning retrain"
-          " pipelines."
-      )
-
       with st.form(key=f"feedback_form_{selected_sid}"):
         is_true_risk = st.radio(
             "Validation Decision:",
@@ -244,15 +225,10 @@ elif page == "Visual Inspection & Feedback":
             ],
             horizontal=True,
         )
-
         engineer_notes = st.text_area(
             "Safety Engineer Notes:",
-            placeholder=(
-                "e.g. Vehicle turning near SDC at high velocity, no braking"
-                " required..."
-            ),
+            placeholder="e.g. Turning vehicle proximity close but non-colliding...",
         )
-
         submit_btn = st.form_submit_button("Submit Feedback")
 
         if submit_btn:
@@ -260,52 +236,38 @@ elif page == "Visual Inspection & Feedback":
               "validation": is_true_risk,
               "notes": engineer_notes,
           }
-          st.success(
-              f"✅ Feedback logged for `{selected_sid}`! Saved to feedback"
-              " queue."
-          )
+          st.success(f"✅ Feedback logged for `{selected_sid}`!")
 
-      # Show logged status if available
       if selected_sid in st.session_state.feedback_db:
         logged = st.session_state.feedback_db[selected_sid]
         st.info(
-            f"**Current Logged Status:** `{logged['validation']}` | Notes:"
+            f"**Logged Status:** `{logged['validation']}` | Notes:"
             f" *{logged['notes']}*"
         )
 
-    # --- RIGHT COLUMN: DUAL VALIDATION METRICS & REFINED XAI ---
     with col_meta:
       st.subheader("🛡️ Dual-Validation Analysis")
 
-      gcn_score = scene_info.get("predicted_risk_probability", 0)
+      model_score = scene_info.get("predicted_risk_probability", 0)
       heuristic_score = scene_info.get("heuristic_risk_score", 0)
 
-      # Metric Cards
-      c_gcn, c_heur = st.columns(2)
-      c_gcn.metric("GCN AI Score", f"{gcn_score:.1%}")
+      c_model, c_heur = st.columns(2)
+      c_model.metric("Model Risk Score", f"{model_score:.1%}")
       c_heur.metric("Heuristic Score", f"{heuristic_score:.1%}")
 
-      # Triage Banner Logic
-      if heuristic_score > 0.70 and gcn_score < 0.40:
+      if heuristic_score > 0.70 and model_score < 0.40:
         st.info(
-            "💡 **GCN Filtered False Positive:** Heuristics flagged high"
-            " velocity/proximity, but GCN graph attention confirmed non-intersecting"
-            " trajectories."
+            "💡 **Filtered False Positive:** Rule heuristic flagged high"
+            " velocity/proximity, but tree-based model confirmed safe trajectory"
+            " separation."
         )
-      elif gcn_score >= 0.80:
-        st.error(
-            "🚨 **Validated High Risk:** Both Heuristics and GCN Graph"
-            " Attention confirm elevated collision probability."
-        )
+      elif model_score >= 0.80:
+        st.error("🚨 **Validated High Risk:** High trajectory conflict probability.")
       else:
-        st.warning(
-            "⚠️ **Moderate Risk:** Scenario exhibits minor proximity or speed"
-            " spikes."
-        )
+        st.warning("⚠️ **Moderate Risk:** Minor trajectory or velocity spike.")
 
       st.divider()
 
-      # Refined XAI Risk Driver Rules
       max_decel = scene_info.get("max_deceleration", 0)
       max_vel = scene_info.get("max_velocity_mps", 0)
       ped_count = scene_info.get("pedestrian_count", 0)
@@ -314,49 +276,31 @@ elif page == "Visual Inspection & Feedback":
       if max_decel < -4.5:
         primary_driver = "🚨 Emergency Hard Braking"
         explanation = (
-            f"Waymo SDC executed abrupt deceleration of `{max_decel:.1f} m/s²`"
-            " to avoid collision."
+            f"Waymo SDC deceleration of `{max_decel:.1f} m/s²` required to"
+            " avoid conflict."
         )
       elif max_vel > 16.0:
-        primary_driver = "⚡ High-Speed Corridor / Intersection Conflict"
+        primary_driver = "⚡ High-Speed Corridor / Conflict"
         explanation = (
-            f"High-speed navigation (`{max_vel:.1f} m/s` /"
-            f" `{max_vel * 2.237:.1f} mph`) through dense traffic"
-            f" (`{int(veh_count)}` vehicles) with close lateral proximity."
+            f"High-speed navigation (`{max_vel * 2.237:.1f} mph`) through dense"
+            " traffic."
         )
       elif ped_count > 0:
         primary_driver = "🚸 Vulnerable Road User Proximity"
         explanation = (
-            f"Elevated risk due to interaction with `{int(ped_count)}`"
-            " pedestrian(s) in immediate vicinity."
+            f"Interaction with `{int(ped_count)}` pedestrian(s) near ego vehicle."
         )
       else:
         primary_driver = "🚗 Complex Multi-Agent Interaction"
-        explanation = (
-            "Dense multi-vehicle interaction at intersection with high"
-            " trajectory convergence."
-        )
+        explanation = "High multi-agent density at trajectory intersection."
 
       st.markdown("**Primary Risk Driver:**")
       st.markdown(f"#### {primary_driver}")
       st.caption(explanation)
 
       st.divider()
-
-      # Telemetry & Context Summary
-      st.markdown("### 📊 Scene Context & Telemetry")
+      st.markdown("### 📊 Telemetry Summary")
       st.write(f"**Road Context:** {scene_info.get('road_context')}")
-      st.metric(
-          "Max Velocity",
-          f"{max_vel:.1f} m/s ({max_vel * 2.237:.1f} mph)",
-      )
-      st.metric(
-          "Max Deceleration",
-          f"{max_decel:.1f} m/s²",
-          delta="Sudden Stop" if max_decel < -4.0 else None,
-          delta_color="inverse",
-      )
-      st.metric(
-          "Surrounding Agents",
-          f"{int(veh_count + ped_count)} total ({int(ped_count)} peds)",
-      )
+      st.metric("Max Velocity", f"{max_vel * 2.237:.1f} mph")
+      st.metric("Max Deceleration", f"{max_decel:.1f} m/s²")
+      st.metric("Surrounding Agents", f"{int(veh_count + ped_count)} total")
