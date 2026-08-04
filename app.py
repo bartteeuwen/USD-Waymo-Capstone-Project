@@ -1,5 +1,4 @@
 import os
-import json
 import pandas as pd
 import plotly.express as px
 import streamlit as st
@@ -21,31 +20,44 @@ This dashboard ranks autonomous driving scene graphs based on predicted collisio
 derived from **XGBoost (Tuned)** and **Graph Neural Network (GNN)** ensemble models.
 """)
 
-# --- Flexible Data Loader ---
+# --- Load Main Data & Video Index ---
 @st.cache_data
-def load_summary_data():
-    # Order of paths to search
-    possible_paths = [
-        "data/high_risk_scenarios_valid.csv",
-        "high_risk_scenarios_valid.csv",
-        "data/triaged_scenarios.csv",
-        "triaged_scenarios.csv"
-    ]
-    for path in possible_paths:
+def load_datasets():
+    # 1. Load Main Triage Summary (Full Dataset)
+    main_paths = ["data/triaged_scenarios.csv", "triaged_scenarios.csv", "data/high_risk_scenarios.csv", "high_risk_scenarios.csv"]
+    df_main = None
+    for path in main_paths:
         if os.path.exists(path):
-            return pd.read_csv(path)
+            df_main = pd.read_csv(path)
+            break
             
-    st.error("❌ Metadata CSV not found. Please place `high_risk_scenarios_valid.csv` or `triaged_scenarios.csv` in your app folder.")
-    st.stop()
+    # 2. Load Validated Video Scenarios (20-row subset)
+    valid_paths = ["data/high_risk_scenarios_valid.csv", "high_risk_scenarios_valid.csv"]
+    df_valid = None
+    for path in valid_paths:
+        if os.path.exists(path):
+            df_valid = pd.read_csv(path)
+            break
+            
+    # Fallback logic if only one file exists
+    if df_main is None and df_valid is not None:
+        df_main = df_valid
+    elif df_main is None:
+        st.error("❌ No scenario CSV dataset found in repository.")
+        st.stop()
+        
+    return df_main, df_valid
 
-# --- Main App Logic ---
+# --- Main Execution ---
 try:
-    df = load_summary_data()
+    df_summary, df_videos = load_datasets()
     
-    # --- Data Cleaning & Normalization ---
-    if 'scenario_id' in df.columns:
-        df['scenario_id'] = df['scenario_id'].astype(str).str.strip().str.lower()
-    
+    # Clean IDs
+    if 'scenario_id' in df_summary.columns:
+        df_summary['scenario_id'] = df_summary['scenario_id'].astype(str).str.strip().str.lower()
+    if df_videos is not None and 'scenario_id' in df_videos.columns:
+        df_videos['scenario_id'] = df_videos['scenario_id'].astype(str).str.strip().str.lower()
+
     # --- Sidebar Controls ---
     st.sidebar.header("⚙️ Risk Filter Controls")
     risk_threshold = st.sidebar.slider(
@@ -53,7 +65,7 @@ try:
         min_value=0.0, max_value=1.0, value=0.75, step=0.01
     )
     
-    filtered_df = df.copy()
+    filtered_df = df_summary.copy()
     if 'predicted_risk_probability' in filtered_df.columns:
         filtered_df = filtered_df[filtered_df['predicted_risk_probability'] >= risk_threshold]
         
@@ -61,19 +73,19 @@ try:
     if valid_physics_only and 'is_valid_physics' in filtered_df.columns:
         filtered_df = filtered_df[filtered_df['is_valid_physics'] == True]
     
-    # --- KPI Summary Cards ---
+    # --- KPI Summary Cards (Reflect Full Dataset) ---
     col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Total Evaluated Scenes", f"{len(df):,}")
-    col2.metric("Triaged High-Risk Scenes", f"{len(filtered_df):,}", delta=f"{len(filtered_df)/len(df)*100:.1f}%" if len(df) > 0 else "0%")
-    col3.metric("Max Predicted Risk Score", f"{df['predicted_risk_probability'].max():.4f}" if 'predicted_risk_probability' in df.columns else "N/A")
+    col1.metric("Total Evaluated Scenes", f"{len(df_summary):,}")
+    col2.metric("Triaged High-Risk Scenes", f"{len(filtered_df):,}", delta=f"{len(filtered_df)/len(df_summary)*100:.1f}%" if len(df_summary) > 0 else "0%")
+    col3.metric("Max Predicted Risk Score", f"{df_summary['predicted_risk_probability'].max():.4f}" if 'predicted_risk_probability' in df_summary.columns else "N/A")
     col4.metric("Avg Risk Score (Filtered)", f"{filtered_df['predicted_risk_probability'].mean():.4f}" if len(filtered_df) > 0 and 'predicted_risk_probability' in filtered_df.columns else "N/A")
     
     st.divider()
     
-    # --- Data Table ---
+    # --- Data Table (Shows Full Triaged List) ---
     st.subheader("📋 Triaged High-Risk Scenarios")
-    default_cols = [c for c in ['scenario_id', 'predicted_risk_probability', 'target_risk_matrix', 'vehicle_count', 'pedestrian_count', 'max_velocity_mps', 'max_deceleration'] if c in df.columns]
-    selected_cols = st.multiselect("Select Display Columns", options=list(df.columns), default=default_cols)
+    default_cols = [c for c in ['scenario_id', 'predicted_risk_probability', 'target_risk_matrix', 'vehicle_count', 'pedestrian_count', 'max_velocity_mps', 'max_deceleration'] if c in df_summary.columns]
+    selected_cols = st.multiselect("Select Display Columns", options=list(df_summary.columns), default=default_cols)
     
     if not filtered_df.empty and selected_cols:
         style_df = filtered_df[selected_cols]
@@ -90,17 +102,30 @@ try:
 
     st.divider()
 
-    # --- Scenario Deep Dive Section ---
+    # --- Scenario Deep Dive Section (Restricted to Rendered Subset) ---
     st.subheader("🔍 Scenario Deep-Dive Inspector")
     
-    if not filtered_df.empty:
-        scenario_options = filtered_df['scenario_id'].unique()
+    # Determine options with available videos
+    if df_videos is not None:
+        video_available_ids = set(df_videos['scenario_id'].unique())
+        # Filter dropdown options to ONLY scenes that have rendered videos
+        renderable_options = [sid for sid in filtered_df['scenario_id'].unique() if sid in video_available_ids]
+        
+        # Fallback to all video IDs if current slider filter excluded them
+        if not renderable_options:
+            renderable_options = list(video_available_ids)
+            
+        st.info("💡 **Deep-Dive Replay Available:** The selector below is filtered to scenarios with pre-rendered BEV video feeds.")
+    else:
+        renderable_options = filtered_df['scenario_id'].unique()
+
+    if renderable_options:
         selected_scenario_id = st.selectbox(
-            "Select Scenario ID to inspect:", 
-            options=scenario_options
+            "Select Scenario ID to inspect (Rendered BEV Available):", 
+            options=renderable_options
         )
         
-        scene_info = df[df['scenario_id'] == selected_scenario_id].iloc[0]
+        scene_info = df_summary[df_summary['scenario_id'] == selected_scenario_id].iloc[0] if selected_scenario_id in df_summary['scenario_id'].values else df_videos[df_videos['scenario_id'] == selected_scenario_id].iloc[0]
         
         tab1, tab2 = st.tabs(["📊 Scene Breakdown", "🎥 Bird's Eye View (BEV) Playback"])
         
@@ -137,7 +162,6 @@ try:
         with tab2:
             st.markdown(f"**Streaming Pre-Rendered Trajectory Feed for Scenario:** `{selected_scenario_id}`")
             
-            # Construct Public GCS Video URL
             video_url = f"{GCS_VIDEO_BASE_URL}/{selected_scenario_id}.mp4"
             
             col_vid, col_meta = st.columns([2, 1])
@@ -153,7 +177,7 @@ try:
                 st.metric("Max Deceleration", f"{scene_info.get('max_deceleration', 0):.1f} m/s²")
                 
     else:
-        st.warning("No scenarios match the current filter criteria.")
+        st.warning("No scenarios with rendered video feeds match the current filter criteria.")
 
 except Exception as e:
     st.error(f"Error executing Streamlit dashboard: {e}")
