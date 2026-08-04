@@ -54,9 +54,11 @@ except Exception as e:
 
 # --- SIDEBAR NAVIGATION & FILTERS ---
 st.sidebar.title("🚘 Waymo AV Safety Hub")
+
+# Cleaned Page Names (Removed Movie Icon & BEV)
 page = st.sidebar.radio(
     "Select View Mode:",
-    ["📊 Executive Triage Dashboard", "🎬 BEV Visual Inspection & Feedback"],
+    ["📊 Executive Triage Dashboard", "Visual Inspection & Feedback"],
 )
 
 st.sidebar.divider()
@@ -71,7 +73,7 @@ min_risk_prob = st.sidebar.slider(
     step=0.05,
 )
 
-# Filter dataset
+# Filter dataset based on active threshold
 filtered_df = df[df["predicted_risk_probability"] >= min_risk_prob].copy()
 
 # Initialize Session State for Active Learning Feedback Loop
@@ -89,10 +91,10 @@ if page == "📊 Executive Triage Dashboard":
   )
   st.divider()
 
-  # --- TOP KPI ROW: PERFORMANCE & PRODUCTIVITY SAVINGS ---
+  # --- TOP KPI ROW: FIXED TOTAL OF 20 EVALUATED SCENARIOS ---
   m1, m2, m3, m4 = st.columns(4)
 
-  total_scenarios = len(df)
+  total_scenarios = len(df)  # Always 20 evaluated scenarios
   flagged_scenarios = len(filtered_df)
 
   # False positive suppression metrics
@@ -103,11 +105,12 @@ if page == "📊 Executive Triage Dashboard":
   # Productivity Time Saved: ~5 minutes saved per suppressed false positive
   hours_saved = round((false_positives_suppressed * 5) / 60, 1)
 
-  m1.metric("Total Evaluated Scenarios", f"{total_scenarios:,}")
+  # KPI Metrics
+  m1.metric("Total Evaluated Scenarios", f"{total_scenarios}")
   m2.metric(
       "High-Risk Triage Queue",
-      f"{flagged_scenarios:,}",
-      f"{flagged_scenarios/total_scenarios:.1%} of total",
+      f"{flagged_scenarios}",
+      f"{flagged_scenarios/total_scenarios:.0%} of total",
   )
   m3.metric("GCN Model Precision", "94.2%", "+12.8% vs Rule Baseline")
   m4.metric(
@@ -121,8 +124,8 @@ if page == "📊 Executive Triage Dashboard":
   # --- SECTION: INTERACTIVE HIGH-RISK SCENARIOS TABLE ---
   st.subheader("📋 Triaged High-Risk Scenarios")
   st.caption(
-      "Filter, search, and customize columns for scenarios meeting the current"
-      " risk threshold."
+      f"Showing {flagged_scenarios} of {total_scenarios} scenarios meeting"
+      " the current risk threshold."
   )
 
   # Column Selector
@@ -150,21 +153,21 @@ if page == "📊 Executive Triage Dashboard":
       "Choose Columns to Display:", options=all_columns, default=default_cols
   )
 
-  # Search Filter
+  # Fixed Search Filter Logic
   search_query = st.text_input(
       "🔍 Search Scenario ID or Road Context:", placeholder="e.g. Corridor or 4b9..."
   )
 
   table_df = filtered_df.copy()
   if search_query:
-      table_df = table_df[
-      table_df["scenario_id"].str.contains(
-          search_query.lower(), case=False, na=False
-      )
-      | table_df["road_context"].str.contains(
-          search_query, case=False, na=False
-      )
-  ]
+    table_df = table_df[
+        table_df["scenario_id"].str.contains(
+            search_query.lower(), case=False, na=False
+        )
+        | table_df["road_context"].str.contains(
+            search_query, case=False, na=False
+        )
+    ]
 
   if not selected_cols:
     selected_cols = default_cols
@@ -179,15 +182,18 @@ if page == "📊 Executive Triage Dashboard":
 
 
 # ==============================================================================
-# PAGE 2: BIRD'S EYE VIEW VISUAL INSPECTION & FEEDBACK
+# PAGE 2: VISUAL INSPECTION & FEEDBACK
 # ==============================================================================
-elif page == "🎬 BEV Visual Inspection & Feedback":
-  st.title("🎬 Bird's Eye View (BEV) Inspection Engine")
+elif page == "Visual Inspection & Feedback":
+  st.title("Visual Inspection & Feedback Engine")
   st.markdown(
       "Trajectory playback, dual-validation metrics, and Safety Engineer feedback"
       " logging."
   )
   st.divider()
+
+  total_scenarios = len(df)
+  flagged_scenarios = len(filtered_df)
 
   if filtered_df.empty:
     st.warning(
@@ -195,10 +201,12 @@ elif page == "🎬 BEV Visual Inspection & Feedback":
         " the sidebar."
     )
   else:
-    # Scenario Selector
+    # Scenario Selector displaying counts out of 20
     scenario_list = filtered_df["scenario_id"].unique().tolist()
     selected_sid = st.selectbox(
-        "Select Scenario ID to Inspect:", options=scenario_list
+        f"Select Scenario ID to Inspect (Showing {flagged_scenarios} of"
+        f" {total_scenarios} scenarios):",
+        options=scenario_list,
     )
 
     scene_info = filtered_df[
@@ -210,7 +218,7 @@ elif page == "🎬 BEV Visual Inspection & Feedback":
 
     # --- LEFT COLUMN: VIDEO PLAYBACK & ACTIVE FEEDBACK ---
     with col_video:
-      st.subheader("🎥 Trajectory Stream")
+      st.subheader("Trajectory Stream")
       st.video(video_url, autoplay=True, loop=True)
       st.caption(
           "🔴 Waymo SDC | 🔵 Vehicle | 🟡 Pedestrian | 🟢 Cyclist | 💖 Risk"
