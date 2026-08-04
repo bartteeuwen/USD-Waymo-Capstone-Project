@@ -1,13 +1,11 @@
 import os
-os.environ["PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION"] = "python"
-
 import json
-import struct
 import pandas as pd
 import plotly.express as px
 import streamlit as st
-from google.cloud import storage
-from waymo_open_dataset.protos import scenario_pb2
+
+# --- Public GCS Base URL for Rendered MP4s ---
+GCS_VIDEO_BASE_URL = "https://storage.googleapis.com/waymo-capstone-rendered-videos"
 
 # --- Page configuration ---
 st.set_page_config(
@@ -23,102 +21,36 @@ This dashboard ranks autonomous driving scene graphs based on predicted collisio
 derived from **XGBoost (Tuned)** and **Graph Neural Network (GNN)** ensemble models.
 """)
 
-# --- Data Loaders ---
+# --- Flexible Data Loader ---
 @st.cache_data
 def load_summary_data():
-    return pd.read_csv("data/triaged_scenarios.csv")
-
-@st.cache_data
-def load_gcs_index():
-    return pd.read_parquet("data/tfrecord_index.parquet")
-
-def fetch_raw_scenario(scenario_id, index_df):
-    """Fetches and parses a single scenario protobuf directly from GCS using byte offsets."""
-    try:
-        clean_id = str(scenario_id).strip().lower()
-        
-        # 1. First attempt: Exact string match
-        matched_records = index_df[index_df['scenario_id'] == clean_id]
-        
-        # 2. Fallback attempt: Partial/substring match in case IDs contain extensions or paths
-        if matched_records.empty and 'scenario_id' in index_df.columns:
-            matched_records = index_df[index_df['scenario_id'].astype(str).str.contains(clean_id, na=False, regex=False)]
-        
-        if matched_records.empty:
-            st.error(f"Scenario ID '{scenario_id}' was not found in the TFRecord index.")
-            return None
+    # Order of paths to search
+    possible_paths = [
+        "data/high_risk_scenarios_valid.csv",
+        "high_risk_scenarios_valid.csv",
+        "data/triaged_scenarios.csv",
+        "triaged_scenarios.csv"
+    ]
+    for path in possible_paths:
+        if os.path.exists(path):
+            return pd.read_csv(path)
             
-        target_info = matched_records.iloc[0]
-        
-        # 3. Authenticate with GCP Secret
-        gcp_credentials = json.loads(st.secrets["GCP_KEY"])
-        client = storage.Client.from_service_account_info(gcp_credentials)
-        
-        bucket_name = "waymo_open_dataset_motion_v_1_2_0"
-        bucket = client.bucket(bucket_name)
-        
-        blob_name = str(target_info['gcs_uri']).replace(f"gs://{bucket_name}/", "")
-        blob = bucket.blob(blob_name)
-        
-        # 4. HTTP Range Request
-        byte_start = int(target_info['byte_offset'])
-        byte_end = byte_start + int(target_info['byte_length']) - 1
-        raw_bytes = blob.download_as_bytes(start=byte_start, end=byte_end)
-        
-        # 5. Strip TFRecord Header (8 bytes length + 4 bytes CRC)
-        data_length = struct.unpack('<Q', raw_bytes[:8])[0]
-        protobuf_bytes = raw_bytes[12 : 12 + data_length]
-        
-        # 6. Parse Protobuf
-        scenario = scenario_pb2.Scenario()
-        scenario.ParseFromString(protobuf_bytes)
-        return scenario
-        
-    except Exception as e:
-        st.error(f"Failed to fetch scenario from GCS: {e}")
-        return None
-
-def extract_trajectory_df(scenario):
-    """Extracts 2D positions across time for all valid agents in the protobuf scenario."""
-    records = []
-    
-    # Map Waymo agent type integers to human-readable strings
-    type_map = {1: 'Vehicle', 2: 'Pedestrian', 3: 'Cyclist'}
-    
-    for track in scenario.tracks:
-        agent_id = track.id
-        agent_type = type_map.get(track.object_type, 'Other')
-        
-        for step_idx, state in enumerate(track.states):
-            if state.valid:
-                records.append({
-                    'agent_id': agent_id,
-                    'agent_type': agent_type,
-                    'frame': step_idx,
-                    'pos_x': state.center_x,
-                    'pos_y': state.center_y,
-                    'velocity_x': state.velocity_x,
-                    'velocity_y': state.velocity_y
-                })
-                
-    return pd.DataFrame(records)
+    st.error("❌ Metadata CSV not found. Please place `high_risk_scenarios_valid.csv` or `triaged_scenarios.csv` in your app folder.")
+    st.stop()
 
 # --- Main App Logic ---
 try:
     df = load_summary_data()
-    gcs_index = load_gcs_index()
     
     # --- Data Cleaning & Normalization ---
     if 'scenario_id' in df.columns:
         df['scenario_id'] = df['scenario_id'].astype(str).str.strip().str.lower()
-    if 'scenario_id' in gcs_index.columns:
-        gcs_index['scenario_id'] = gcs_index['scenario_id'].astype(str).str.strip().str.lower()
     
     # --- Sidebar Controls ---
     st.sidebar.header("⚙️ Risk Filter Controls")
     risk_threshold = st.sidebar.slider(
         "Minimum Risk Score Threshold",
-        min_value=0.0, max_value=1.0, value=0.50, step=0.05
+        min_value=0.0, max_value=1.0, value=0.75, step=0.01
     )
     
     filtered_df = df.copy()
@@ -140,7 +72,7 @@ try:
     
     # --- Data Table ---
     st.subheader("📋 Triaged High-Risk Scenarios")
-    default_cols = [c for c in ['scenario_id', 'predicted_risk_probability', 'target_risk_matrix', 'min_inter_agent_dist', 'avg_agent_velocity', 'max_deceleration'] if c in df.columns]
+    default_cols = [c for c in ['scenario_id', 'predicted_risk_probability', 'target_risk_matrix', 'vehicle_count', 'pedestrian_count', 'max_velocity_mps', 'max_deceleration'] if c in df.columns]
     selected_cols = st.multiselect("Select Display Columns", options=list(df.columns), default=default_cols)
     
     if not filtered_df.empty and selected_cols:
@@ -149,10 +81,10 @@ try:
             st.dataframe(
                 style_df.style.highlight_max(axis=0, subset=['predicted_risk_probability'], color='#f8d7da'),
                 use_container_width=True,
-                height=300
+                height=280
             )
         else:
-            st.dataframe(style_df, use_container_width=True, height=300)
+            st.dataframe(style_df, use_container_width=True, height=280)
     else:
         st.warning("No scenarios match your filter criteria or no display columns were selected.")
 
@@ -170,7 +102,7 @@ try:
         
         scene_info = df[df['scenario_id'] == selected_scenario_id].iloc[0]
         
-        tab1, tab2 = st.tabs(["📊 Scene Breakdown", "📍 Live GCS Spatial Top-Down Replay"])
+        tab1, tab2 = st.tabs(["📊 Scene Breakdown", "🎥 Bird's Eye View (BEV) Playback"])
         
         with tab1:
             col_a, col_b = st.columns(2)
@@ -185,7 +117,7 @@ try:
                         scene_info.get('cyclist_count', 0)
                     ]
                 })
-                fig_agents = px.bar(agent_counts, x='Agent Type', y='Count', title="Agent Counts")
+                fig_agents = px.bar(agent_counts, x='Agent Type', y='Count', title="Agent Counts", color='Agent Type')
                 st.plotly_chart(fig_agents, use_container_width=True)
                 
             with col_b:
@@ -203,29 +135,25 @@ try:
                 st.plotly_chart(fig_map, use_container_width=True)
 
         with tab2:
-            st.markdown(f"**Fetching Live Protobuf Frames for Scenario:** `{selected_scenario_id}`")
+            st.markdown(f"**Streaming Pre-Rendered Trajectory Feed for Scenario:** `{selected_scenario_id}`")
             
-            with st.spinner("Retrieving byte range from Google Cloud Storage..."):
-                scenario_proto = fetch_raw_scenario(selected_scenario_id, gcs_index)
+            # Construct Public GCS Video URL
+            video_url = f"{GCS_VIDEO_BASE_URL}/{selected_scenario_id}.mp4"
             
-            if scenario_proto is not None:
-                traj_data = extract_trajectory_df(scenario_proto)
+            col_vid, col_meta = st.columns([2, 1])
+            
+            with col_vid:
+                st.video(video_url)
+                st.caption(f"⚡ Streaming BEV video feed from GCS bucket for `{selected_scenario_id}`")
+            
+            with col_meta:
+                st.markdown("### Scenario Highlights")
+                st.metric("Risk Score", f"{scene_info.get('predicted_risk_probability', 0):.2%}")
+                st.metric("Max Velocity", f"{scene_info.get('max_velocity_mps', 0):.1f} m/s")
+                st.metric("Max Deceleration", f"{scene_info.get('max_deceleration', 0):.1f} m/s²")
                 
-                if not traj_data.empty:
-                    fig_replay = px.scatter(
-                        traj_data, 
-                        x='pos_x', 
-                        y='pos_y', 
-                        color='agent_type',
-                        hover_data=['agent_id', 'frame'],
-                        title=f"2D Agent Trajectories ({selected_scenario_id})"
-                    )
-                    st.plotly_chart(fig_replay, use_container_width=True)
-                else:
-                    st.warning("No valid agent trajectory states found for this scenario.")
     else:
         st.warning("No scenarios match the current filter criteria.")
 
 except Exception as e:
-    st.error(f"Error loading dataset: {e}")
-    st.info("Ensure `data/triaged_scenarios.csv` and `data/tfrecord_index.parquet` exist in your repository.")
+    st.error(f"Error executing Streamlit dashboard: {e}")
