@@ -157,12 +157,14 @@ if page == "📊 Executive Triage Dashboard":
 
   table_df = filtered_df.copy()
   if search_query:
-    table_df = table_df[
-        table_df["scenario_id"].str.contains(search_query.lower())
-        | table_df["road_context"]
-        .str.lower()
-        .contains(search_query.lower())
-    ]
+  table_df = table_df[
+      table_df["scenario_id"].str.contains(
+          search_query.lower(), case=False, na=False
+      )
+      | table_df["road_context"].str.contains(
+          search_query, case=False, na=False
+      )
+  ]
 
   if not selected_cols:
     selected_cols = default_cols
