@@ -171,10 +171,48 @@ try:
                 st.caption(f"⚡ Streaming BEV video feed from GCS bucket for `{selected_scenario_id}`")
             
             with col_meta:
-                st.markdown("### Scenario Highlights")
-                st.metric("Risk Score", f"{scene_info.get('predicted_risk_probability', 0):.2%}")
-                st.metric("Max Velocity", f"{scene_info.get('max_velocity_mps', 0):.1f} m/s")
-                st.metric("Max Deceleration", f"{scene_info.get('max_deceleration', 0):.1f} m/s²")
+                st.markdown("### ⚠️ Scenario Risk Analysis")
+                
+                # 1. Dynamic Risk Level Badge
+                risk_score = scene_info.get('predicted_risk_probability', 0)
+                if risk_score >= 0.90:
+                    st.error(f"🔴 **CRITICAL RISK** ({risk_score:.1%})")
+                elif risk_score >= 0.80:
+                    st.warning(f"🟠 **HIGH RISK** ({risk_score:.1%})")
+                else:
+                    st.info(f"🟡 **MODERATE RISK** ({risk_score:.1%})")
+
+                # 2. Extract Key Telemetry
+                max_decel = scene_info.get('max_deceleration', 0)
+                max_vel = scene_info.get('max_velocity_mps', 0)
+                ped_count = scene_info.get('pedestrian_count', 0)
+                veh_count = scene_info.get('vehicle_count', 0)
+                
+                # 3. Determine Primary Risk Driver (XAI Logic)
+                if max_decel < -5.0:
+                    primary_driver = "🚨 Emergency Hard Braking"
+                    explanation = f"Ego AV executed severe deceleration of `{max_decel:.1f} m/s²` to avoid collision."
+                elif ped_count > 0 and risk_score > 0.85:
+                    primary_driver = "🚸 Vulnerable Road User Threat"
+                    explanation = f"High risk score driven by interaction with `{int(ped_count)}` pedestrian(s) in close proximity."
+                elif max_vel > 18.0:
+                    primary_driver = "⚡ High-Speed Corridor Conflict"
+                    explanation = f"High-speed navigation (`{max_vel:.1f} m/s`) in dense surrounding traffic (`{int(veh_count)}` vehicles)."
+                else:
+                    primary_driver = "🚗 High Agent Density Intersection"
+                    explanation = f"Complex multi-agent interaction involving `{int(veh_count)}` surrounding entities."
+
+                st.markdown("**Primary Risk Driver:**")
+                st.markdown(f"#### {primary_driver}")
+                st.caption(explanation)
+                
+                st.divider()
+                
+                # 4. Telemetry Metrics
+                st.markdown("### 📊 Scenario Telemetry")
+                st.metric("Max Velocity", f"{max_vel:.1f} m/s")
+                st.metric("Max Deceleration", f"{max_decel:.1f} m/s²", delta="Sudden Stop" if max_decel < -4.0 else None, delta_color="inverse")
+                st.metric("Active Road Users", f"{int(veh_count + ped_count)} agents ({int(ped_count)} peds)")
                 
     else:
         st.warning("No scenarios with rendered video feeds match the current filter criteria.")
