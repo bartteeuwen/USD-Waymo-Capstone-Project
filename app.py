@@ -16,6 +16,7 @@ GCS_VIDEO_BASE_URL = (
 )
 TOTAL_DATASET_COUNT = 6311  # Baseline evaluated fleet dataset count
 TRIAGE_TIME_PER_SCENE_MINS = 3.0  # Estimated review time per scenario
+SAFETY_ENGINEER_HOURLY_RATE = 85.00  # Estimated Waymo AV Safety Engineer hourly rate ($)
 
 
 # --- LOAD MODEL (.pkl) & DATASET ---
@@ -129,11 +130,12 @@ if page == "Executive Triage Dashboard":
     hours_saved = round(
         (false_alarms_suppressed * TRIAGE_TIME_PER_SCENE_MINS) / 60.0, 1
     )
+    cost_saved = hours_saved * SAFETY_ENGINEER_HOURLY_RATE
 
     # --- TOP KPI METRICS ROW ---
-    m1, m2, m3, m4 = st.columns(4)
+    m1, m2, m3, m4, m5 = st.columns(5)
 
-    m1.metric("Total Evaluated Dataset", f"{TOTAL_DATASET_COUNT:,}")
+    m1.metric("Total Evaluated Fleet", f"{TOTAL_DATASET_COUNT:,}")
     m2.metric(
         f"Critical Complexity ({critical_pct:.1f}%)", f"{critical_count:,}"
     )
@@ -143,18 +145,25 @@ if page == "Executive Triage Dashboard":
     m4.metric(
         "Review Time Saved",
         f"{hours_saved:,.1f} Hours",
-        f"+{false_alarms_suppressed:,} False Alarms Suppressed",
+        f"+{false_alarms_suppressed:,} Bypassed",
+    )
+    m5.metric(
+        "Productivity Cost Saved",
+        f"${cost_saved:,.2f}",
+        f"@ ${SAFETY_ENGINEER_HOURLY_RATE:.0f}/hr Rate",
     )
 
     # --- METHODOLOGY EXPLAINER EXPANDER ---
-    with st.expander("Methodology: How Review Time Saved is Calculated"):
+    with st.expander("Methodology: How Review Time & Productivity Cost Saved are Calculated"):
         st.markdown(
             f"""
             * **Evaluated Fleet Load ($N$):** Base dataset of **{TOTAL_DATASET_COUNT:,}** driving scenarios evaluated across the pipeline.
             * **Average Triage Time ($T$):** Estimated manual inspection time of **{TRIAGE_TIME_PER_SCENE_MINS} minutes** per scenario by a safety engineer.
+            * **Engineer Hourly Rate ($R$):** Industry standard rate benchmarked at **${SAFETY_ENGINEER_HOURLY_RATE:.2f}/hour** for AV Safety & Systems Engineers.
             * **False Alarm Suppression ($S$):** At the current probability threshold (`{min_risk_prob:.2f}`), **{standard_count:,} standard-complexity scenarios** are classified as benign and bypassed.
             * **Mathematical Model:**
-              $$\\text{{Hours Saved}} = \\frac{{\\text{{Suppressed Scenarios}} \\times T}}{{60}} = \\frac{{{standard_count:,} \\times {TRIAGE_TIME_PER_SCENE_MINS}}}{{60}} = {hours_saved:,.1f}\\text{{ Hours}}$$
+              $$\\text{{Hours Saved}} = \\frac{{S \\times T}}{{60}} = \\frac{{{standard_count:,} \\times {TRIAGE_TIME_PER_SCENE_MINS}}}{{60}} = {hours_saved:,.1f}\\text{{ Hours}}$$
+              $$\\text{{Cost Saved}} = \\text{{Hours Saved}} \\times R = {hours_saved:,.1f} \\times \\${SAFETY_ENGINEER_HOURLY_RATE:.2f} = \\mathbf{{\\${cost_saved:,.2f}}}$$
             """
         )
 
@@ -421,9 +430,8 @@ elif page == "Visual Inspection & Feedback":
 
         with bot_col1:
             st.subheader("Trajectory Stream")
-            st.video(video_url, autoplay=True, loop=True)
 
-            # Colored Legend directly beneath the video player
+            # Colored Legend placed ABOVE the video player
             st.markdown(
                 """
                 **Trajectory Map Legend:** &nbsp;
@@ -431,10 +439,13 @@ elif page == "Visual Inspection & Feedback":
                 <span style="color:#1E88E5; font-weight:bold;">🔵 Surrounding Vehicles</span> &nbsp;|&nbsp; 
                 <span style="color:#FFC107; font-weight:bold;">🟡 Pedestrians</span> &nbsp;|&nbsp; 
                 <span style="color:#00E676; font-weight:bold;">🟢 Cyclists</span> &nbsp;|&nbsp; 
-                <span style="color:#E91E63; font-weight:bold;">🩷 Hazard Corridor Zone</span>
+                <span style="color:#FF9800; font-weight:bold;">⚠️ Hazard Corridor Zone</span>
                 """,
                 unsafe_allow_html=True,
             )
+            
+            # Video Player Frame
+            st.video(video_url, autoplay=True, loop=True)
 
         with bot_col2:
             st.subheader("Primary Risk Driver & Telemetry")
