@@ -2,7 +2,7 @@
 
 **Author**: Bart Sosa-Teeuwen  
 **Program**: Master of Science in Applied Data Science | Shiley-Marcos School of Engineering | University of San Diego  
-**Contact**: bteeuwen@sandiego.edu  
+**Contact**: teeuwen.b1@gmail.com  
 
 ---
 
