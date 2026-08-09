@@ -34,7 +34,7 @@ def load_ml_model():
 
 @st.cache_data
 def load_data():
-    df = pd.read_csv("high_risk_scenarios_valid.csv")
+    df = pd.read_csv("data/high_risk_scenarios_valid.csv")
     df["scenario_id"] = df["scenario_id"].astype(str).str.strip().str.lower()
 
     if "heuristic_risk_score" not in df.columns:
