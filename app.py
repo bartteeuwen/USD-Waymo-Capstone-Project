@@ -1,7 +1,25 @@
+import os
 import joblib
 import numpy as np
 import pandas as pd
 import streamlit as st
+
+# --- IMPORT CONFIG (With safe fallback) ---
+try:
+    from src.config import EXPANDED_FEATURES
+except ImportError:
+    EXPANDED_FEATURES = [
+        "lane_count",
+        "stop_sign_count",
+        "crosswalk_count",
+        "speed_bump_count",
+        "vehicle_count",
+        "pedestrian_count",
+        "cyclist_count",
+        "min_inter_agent_dist",
+        "avg_agent_velocity",
+        "velocity_std",
+    ]
 
 # --- STREAMLIT PAGE CONFIGURATION ---
 st.set_page_config(
@@ -22,14 +40,26 @@ SAFETY_ENGINEER_HOURLY_RATE = 85.00  # Estimated Waymo AV Safety Engineer hourly
 # --- LOAD MODEL (.pkl) & DATASET ---
 @st.cache_resource
 def load_ml_model():
-    """Loads serialized Random Forest / XGBoost model and feature definitions."""
+    """Loads serialized model and feature definitions with path fallbacks."""
+    model_paths = ["artifacts/rf_model.pkl", "artifacts/waymo_rf_model.pkl"]
+    model = None
+    
+    for path in model_paths:
+        if os.path.exists(path):
+            try:
+                model = joblib.load(path)
+                break
+            except Exception:
+                continue
+
     try:
-        model = joblib.load("artifacts/waymo_rf_model.pkl")
-        features = joblib.load("artifacts/model_features.pkl")
-        return model, features, True
+        features = joblib.load("artifacts/model_features.pkl") if os.path.exists("artifacts/model_features.pkl") else EXPANDED_FEATURES
     except Exception:
-        # Fallback to simulation mode if .pkl files aren't in root directory
-        return None, None, False
+        features = EXPANDED_FEATURES
+
+    if model is not None:
+        return model, features, True
+    return None, EXPANDED_FEATURES, False
 
 
 @st.cache_data
@@ -236,7 +266,7 @@ elif page == "Live Scenario Risk Predictor":
     st.title("Live Model Inference & Sensitivity Analysis")
     st.markdown(
         "Input custom scenario parameters to execute real-time inference using"
-        " the Random Forest pipeline (`waymo_rf_model.pkl`)."
+        " the Random Forest pipeline (`rf_model.pkl`)."
     )
     st.caption(
         "Model Selection Rationale: Engineered using tree ensemble"
@@ -248,7 +278,7 @@ elif page == "Live Scenario Risk Predictor":
     if not model_loaded:
         st.info(
             "Mode: Interactive Mathematical Simulation (Place"
-            " `waymo_rf_model.pkl` and `model_features.pkl` in the root folder"
+            " `rf_model.pkl` in the artifacts folder"
             " to enable live `.pkl` binary inference)."
         )
 
@@ -277,42 +307,28 @@ elif page == "Live Scenario Risk Predictor":
 
     st.divider()
 
-    # Input feature vector
-    input_data = pd.DataFrame(
-        [[
-            v_count,
-            p_count,
-            c_count,
-            tot_agents,
-            lane_cnt,
-            crosswalk_cnt,
-            stop_sign_cnt,
-            speed_bump_cnt,
-            max_vel,
-            min_prox,
-            avg_vel,
-            vel_std,
-        ]],
-        columns=[
-            "vehicle_count",
-            "pedestrian_count",
-            "cyclist_count",
-            "total_agents",
-            "lane_count",
-            "crosswalk_count",
-            "stop_sign_count",
-            "speed_bump_count",
-            "max_velocity",
-            "min_proximity",
-            "avg_velocity",
-            "velocity_std",
-        ],
-    )
+    # Input feature vector mapped strictly to EXPANDED_FEATURES schema
+    input_dict = {
+        "lane_count": lane_cnt,
+        "stop_sign_count": stop_sign_cnt,
+        "crosswalk_count": crosswalk_cnt,
+        "speed_bump_count": speed_bump_cnt,
+        "vehicle_count": v_count,
+        "pedestrian_count": p_count,
+        "cyclist_count": c_count,
+        "min_inter_agent_dist": min_prox,
+        "avg_agent_velocity": avg_vel,
+        "velocity_std": vel_std,
+    }
+
+    input_data = pd.DataFrame([input_dict])
+
+    # Re-order columns strictly according to the model's feature order
+    if model_features and isinstance(model_features, list):
+        input_data = input_data[model_features]
 
     # Execute Inference
     if model_loaded and rf_model is not None:
-        if model_features and isinstance(model_features, list):
-            input_data = input_data[model_features]
         risk_prob = rf_model.predict_proba(input_data)[0][1]
     else:
         raw_score = (
@@ -431,7 +447,6 @@ elif page == "Visual Inspection & Feedback":
         with bot_col1:
             st.subheader("Trajectory Stream")
 
-            # Colored Legend placed ABOVE the video player
             st.markdown(
                 """
                 **Trajectory Map Legend:** &nbsp;
@@ -444,7 +459,6 @@ elif page == "Visual Inspection & Feedback":
                 unsafe_allow_html=True,
             )
             
-            # Video Player Frame
             st.video(video_url, autoplay=True, loop=True)
 
         with bot_col2:
