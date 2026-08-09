@@ -5,13 +5,18 @@ import pandas as pd
 import tensorflow as tf
 from waymo_open_dataset.protos import scenario_pb2
 
-def load_and_extract_waymo_scenarios(gcs_bucket_path: str, num_shards: int = 100):
+def load_and_extract_waymo_scenarios(
+    gcs_bucket_path: str,
+    num_shards: int = 100,
+    total_shards: int = 1000,
+    velocity_threshold_mps: float = 38.0,
+):
     """
     Streams TFRecord shards from GCS, parses scenario protobufs, extracts 
     map friction points, agent counts, kinematic features, and spatial nodes.
     """
     large_scale_shards = [
-        f"{gcs_bucket_path}/training_20s.tfrecord-{i:05d}-of-{num_shards:05d}" 
+        f"{gcs_bucket_path}/training_20s.tfrecord-{i:05d}-of-{total_shards:05d}"
         for i in range(num_shards)
     ]
     streaming_dataset = tf.data.TFRecordDataset(large_scale_shards, compression_type='')
@@ -53,7 +58,8 @@ def load_and_extract_waymo_scenarios(gcs_bucket_path: str, num_shards: int = 100
                 if not state.valid: continue
 
                 current_velocity = math.hypot(state.velocity_x, state.velocity_y)
-                if current_velocity > 38.0: is_anomaly = True
+                if current_velocity > velocity_threshold_mps:
+                    is_anomaly = True
                 if current_velocity > max_velocity_scene: max_velocity_scene = current_velocity
 
                 if prev_velocity is not None and prev_heading is not None:

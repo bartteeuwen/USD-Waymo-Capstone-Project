@@ -2,7 +2,10 @@ import os
 
 # --- Paths & Storage ---
 GCS_BUCKET_PATH = "gs://waymo_open_dataset_motion_v_1_2_0/uncompressed/scenario/training_20s"
+# The public training split contains 1,000 shards.  We intentionally process
+# only the first 100 by default, but their filenames still end in `of-01000`.
 NUM_SHARDS = 100
+TOTAL_TRAINING_SHARDS = 1000
 ARTIFACTS_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "artifacts")
 
 # --- Feature Definitions ---
