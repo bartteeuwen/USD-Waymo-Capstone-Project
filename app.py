@@ -24,8 +24,8 @@ SAFETY_ENGINEER_HOURLY_RATE = 85.00  # Estimated Waymo AV Safety Engineer hourly
 def load_ml_model():
     """Loads serialized Random Forest / XGBoost model and feature definitions."""
     try:
-        model = joblib.load("waymo_rf_model.pkl")
-        features = joblib.load("model_features.pkl")
+        model = joblib.load("artifacts/waymo_rf_model.pkl")
+        features = joblib.load("artifacts/model_features.pkl")
         return model, features, True
     except Exception:
         # Fallback to simulation mode if .pkl files aren't in root directory
