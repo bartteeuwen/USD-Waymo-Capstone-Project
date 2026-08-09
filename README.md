@@ -151,4 +151,5 @@ streamlit run app.py
 
 * **Data Source**: Waymo Open Motion Dataset (v1.2.0).
 * **Key Literature**: Ettinger et al. (2021), Ki et al. (2025), Breiman (2001).
+* **AI Assistance:** Google Gemini was utilized as a supportive assistant for code linting (PEP 8 adherence), notebook header comment standardization, and cell navigation hotlink formatting. All core analytical logic, feature engineering designs, and model selection decisions remain the original work of the author.
 * *See full capstone report for complete bibliography and methodology notes.*
