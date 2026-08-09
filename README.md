@@ -85,9 +85,14 @@ All models were evaluated using an **80/20** stratified holdout split (**5,048**
 
 ## 🛠️ Project Artifact & Web Dashboard
 
-The analytical core is operationalized as an interactive **Streamlit** executive dashboard and inspection tool (`app.py`):
+The analytical core is operationalized as an interactive **Streamlit** executive dashboard and inspection tool (`app.py`).
 
-1. **Dynamic Risk Triage**: Slide risk probability thresholds (e.g., set to 0.25) to filter workloads, quantify false alarm suppression, and calculate engineer hours saved.
+[![Waymo Scene Safety Triage Dashboard](images/streamlit_dashboard.png)](https://waymo-scene-safety-triage.streamlit.app/)
+
+> 🚀 **Live Application:** [Launch the Waymo Scene Safety Triage Dashboard](https://waymo-scene-safety-triage.streamlit.app/)
+
+### Core Features & Workflow
+1. **Dynamic Risk Triage**: Slide risk probability thresholds (e.g., set to 0.75) to filter workloads, quantify false alarm suppression, and calculate engineer hours saved.
 2. **Live Custom Scenario Sensitivity**: Input custom map friction and motion parameters to execute real-time risk scoring (< **15 ms** latency).
 3. **Trajectory Playback**: Stream MP4 motion trajectory renders hosted on Google Cloud Storage (GCS) alongside dual-validation metrics.
 4. **Human-in-the-Loop Logging**: Record safety engineer overrides into session state for active learning pipeline retraining.
