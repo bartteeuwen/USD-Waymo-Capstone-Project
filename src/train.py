@@ -19,50 +19,31 @@ import lightgbm as lgb
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score
 
 from src.config import (
-    GCS_BUCKET_PATH, NUM_SHARDS, ARTIFACTS_DIR, 
+    GCS_BUCKET_PATH, NUM_SHARDS, TOTAL_TRAINING_SHARDS, ARTIFACTS_DIR,
     STATIC_FEATURES, EXPANDED_FEATURES, RANDOM_STATE, TEST_SIZE
 )
 from src.data_loader import load_and_extract_waymo_scenarios
 from src.modeling import SpatialGCN, GraphAttentionNet
+from src.feature_engineering import SpatialFeatureEngineer, assign_kinematic_risk_target
 
 def main():
     os.makedirs(ARTIFACTS_DIR, exist_ok=True)
     print("🚀 Starting Waymo Risk Modeling Pipeline...")
 
     # 1. Load Data
-    raw_df, gnn_extracted_scenes = load_and_extract_waymo_scenarios(GCS_BUCKET_PATH, NUM_SHARDS)
+    raw_df, gnn_extracted_scenes = load_and_extract_waymo_scenarios(
+        GCS_BUCKET_PATH, NUM_SHARDS, TOTAL_TRAINING_SHARDS
+    )
     
     # Filter valid physics
     df_final = raw_df[raw_df['is_valid_physics']].copy()
 
-    # 2. Assign Target Variable (Simulated / Clustered complexity if not loaded from CSV)
-    # Mapping target based on your notebook structure
-    df_final['target_risk_matrix'] = np.where(df_final['max_velocity_mps'] > 25.0, 'Critical Complexity', 'Standard Complexity')
+    # 2. Assign the same K-Means target used in the notebook.
+    df_final = assign_kinematic_risk_target(df_final)
     y = df_final['target_risk_matrix'].map({'Standard Complexity': 0, 'Critical Complexity': 1})
 
-    # 3. Engineer Expanded Features
-    min_distances, avg_velocities, velocity_stds = [], [], []
-    for scene in gnn_extracted_scenes[:len(df_final)]:
-        agents = scene['agents']
-        if len(agents) < 2:
-            min_distances.append(50.0)
-        else:
-            positions = [[a['pos_x'], a['pos_y']] for a in agents]
-            dists = [math.hypot(positions[i][0] - positions[j][0], positions[i][1] - positions[j][1])
-                     for i in range(len(positions)) for j in range(i + 1, len(positions))]
-            min_distances.append(min(dists) if dists else 50.0)
-
-        if len(agents) == 0:
-            avg_velocities.append(0.0)
-            velocity_stds.append(0.0)
-        else:
-            vels = [float(a['velocity']) for a in agents]
-            avg_velocities.append(np.mean(vels))
-            velocity_stds.append(np.std(vels))
-
-    df_final['min_inter_agent_dist'] = min_distances
-    df_final['avg_agent_velocity'] = avg_velocities
-    df_final['velocity_std'] = velocity_stds
+    # 3. Engineer expanded features while retaining scene-to-row alignment.
+    df_final = SpatialFeatureEngineer().transform(df_final, gnn_extracted_scenes)
 
     # 4. Tabular Data Splitting & Model Training
     X_expanded = df_final[EXPANDED_FEATURES]
@@ -89,7 +70,8 @@ def main():
     # 5. Graph Neural Network Dataset Construction & Training
     print("Constructing GNN Scene Graphs...")
     gnn_dataset = []
-    clean_scenes = gnn_extracted_scenes[:len(df_final)]
+    scene_by_id = {scene['scenario_id']: scene for scene in gnn_extracted_scenes}
+    clean_scenes = [scene_by_id[row.scenario_id] for _, row in df_final.iterrows()]
 
     for scene, target, (_, row) in zip(clean_scenes, y, df_final.iterrows()):
         agents = scene['agents']

@@ -3,3 +3,12 @@ scikit-learn
 numpy
 pandas
 streamlit
+matplotlib
+seaborn
+xgboost
+lightgbm
+torch
+torch-geometric
+tensorflow
+statsmodels
+shap
