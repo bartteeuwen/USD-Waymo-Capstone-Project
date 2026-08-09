@@ -17,12 +17,12 @@ This project delivers an auditable, lightweight diagnostic framework that combin
 │ Raw Waymo Telemetry    │ ───► │ Feature Engineering      │ ───► │ Transparent Tree Model    │
 │ (10-Hz Motion Tracks)  │      │ (Map Friction & Dynamics)│      │ (Sub-15ms Scenario Risk)  │
 └────────────────────────┘      └──────────────────────────┘      └───────────────────────────┘
-                                                                               │
-                                                                               ▼
-                                                                  ┌───────────────────────────┐
-                                                                  │ Interactive Streamlit     │
-                                                                  │ HITL Review Dashboard     │
-                                                                  └───────────────────────────┘
+│
+▼
+┌───────────────────────────┐
+│ Interactive Streamlit     │
+│ HITL Review Dashboard     │
+└───────────────────────────┘
 ```
 
 ---
@@ -49,10 +49,10 @@ Features are engineered across three geometric and dynamic categories:
 
 1. **Movement Summaries**: Peak scalar velocity ($v_{max}$) and peak deceleration bounds across 20-second windows.
 2. **Map Friction Identifiers**: Static infrastructure counts inside the scene bounding box (`crosswalk_count`, `stop_sign_count`, `speed_bump_count`, `lane_count`).
-3. **Dynamic Interaction Metrics**: Minimum inter-agent spatial proximity ($d_{min}$), mean agent velocity (`avg_agent_velocity`), and velocity standard deviation ($\sigma_v$).
+3. **Dynamic Interaction Metrics**: Minimum inter-agent spatial proximity (`min_inter_agent_dist`), mean agent velocity (`avg_agent_velocity`), and velocity standard deviation (`velocity_std`).
 
 ### Target Variable
-* **`complex_interaction`**: Binary label derived from kinematic clustering (**1** = Critical Complexity [41%], **0** = Standard Complexity [59%]).
+* **`target_risk_matrix`**: Binary label derived from kinematic clustering (**1** = Critical Complexity [41%], **0** = Standard Complexity [59%]).
 
 ---
 
@@ -78,7 +78,7 @@ All models were evaluated using an **80/20** stratified holdout split (**5,048**
 
 ## 🔎 Interpretability & Key Findings
 
-* **Speed Variance Drives Risk**: Global SHAP analysis revealed that speed variation among surrounding actors (`velocity_std`, $\sigma_v$) and minimum spatial proximity ($d_{min}$) exert stronger pushes on scene complexity than raw vehicle volume alone.
+* **Speed Variance Drives Risk**: Global SHAP analysis revealed that speed variation among surrounding actors (`velocity_std`) and minimum spatial proximity (`min_inter_agent_dist`) exert stronger pushes on scene complexity than raw vehicle volume alone.
 * **Non-Linear Friction**: Pedestrian density non-linearly peaks in areas with moderate structural complexity (10 to 25 traffic controls/crosswalks) rather than massive multi-lane highway geometries.
 
 ---
@@ -98,17 +98,21 @@ The analytical core is operationalized as an interactive **Streamlit** executive
 
 ```text
 .
+├── artifacts/
+│   ├── rf_model.pkl                    # Serialized Random Forest model
+│   ├── kmeans_target.pkl               # Fitted KMeans model for target labeling
+│   └── model_features.pkl              # Serialized feature list
 ├── data/
-│   ├── high_risk_scenarios_valid.csv   # Pre-scored validation dataset
-│   └── raw_sample_schema.json          # Dataset field mappings & types
-├── models/
-│   ├── waymo_rf_model.pkl              # Production Random Forest pipeline
-│   └── model_features.pkl              # Serialized feature name mappings
+│   └── high_risk_scenarios_valid.csv   # Pre-scored validation dataset
 ├── notebook/
-│   └── ADS_Capstone_Analysis.ipynb     # Data cleaning, EDA, & modeling pipeline
+│   └── capstone_whitepaper_notebook.ipynb # Executive analysis & diagnostic framework
 ├── src/
-│   ├── feature_engineering.py          # Spatial joins & kinetic metric creation
-│   └── gnn_pipeline.py                 # PyTorch Geometric GCN/GAT model definitions
+│   ├── config.py                       # Project constants and feature lists
+│   ├── data_loader.py                  # TFRecord scenario extraction pipeline
+│   ├── feature_engineering.py          # Spatial joins & kinematic feature generation
+│   ├── inference.py                    # Lightweight prediction engine for web app
+│   ├── modeling.py                     # Tabular & Graph neural network architectures
+│   └── tuning.py                       # RandomizedSearchCV & GNN hyperparameter search
 ├── app.py                              # Streamlit web dashboard application
 ├── requirements.txt                    # Project dependencies
 └── README.md                           # Project documentation
@@ -125,8 +129,8 @@ The analytical core is operationalized as an interactive **Streamlit** executive
 ### 2. Setup Environment
 ```bash
 # Clone repository
-git clone [https://github.com/your-username/av-scene-intelligence.git](https://github.com/your-username/av-scene-intelligence.git)
-cd av-scene-intelligence
+git clone [https://github.com/bartteeuwen/USD-Waymo-Capstone-Project.git](https://github.com/bartteeuwen/USD-Waymo-Capstone-Project.git)
+cd USD-Waymo-Capstone-Project
 
 # Create virtual environment
 python -m venv venv
