@@ -584,7 +584,7 @@ elif page == "User Guide & Methodology":
     guide_col1, guide_col2 = st.columns(2)
 
     with guide_col1:
-        st.subheader("🎯 Target Stakeholder & Task")
+        st.subheader("Target Stakeholder & Task")
         st.markdown(
             """
             * **Target User:** Autonomous Vehicle (AV) Safety Operations Engineers and Fleet Triage Teams.
@@ -595,7 +595,7 @@ elif page == "User Guide & Methodology":
         )
 
     with guide_col2:
-        st.subheader("⚙️ System Navigation & Workflow")
+        st.subheader("System Navigation & Workflow")
         st.markdown(
             """
             1. **Executive Triage Dashboard:** View fleet-wide metrics, review time savings, and productivity cost-benefit calculations based on threshold settings.
@@ -607,10 +607,10 @@ elif page == "User Guide & Methodology":
 
     st.divider()
 
-    st.subheader("🧠 Responsible & Explainable AI Framework")
+    st.subheader("Responsible & Explainable AI Framework")
 
     with st.expander(
-        "🔍 **Feature Importance & Interpretability (SHAP)**", expanded=True
+        "**Feature Importance & Interpretability (SHAP)**", expanded=True
     ):
         st.markdown(
             """
@@ -622,7 +622,7 @@ elif page == "User Guide & Methodology":
         )
 
     with st.expander(
-        "⚖️ **Usage Guidance & Human-in-the-Loop Safeguards**", expanded=True
+        "**Usage Guidance & Human-in-the-Loop Safeguards**", expanded=True
     ):
         st.markdown(
             """
