@@ -6,7 +6,7 @@
 
 ---
 
-## 📌 Executive Summary
+## Executive Summary
 
 Autonomous vehicle (AV) fleets generate petabytes of raw movement logs, creating a massive computational bottleneck for safety teams seeking to isolate high-risk driving events. Current workflows rely on either rigid, oversimplified heuristic rules or compute-heavy, opaque deep-learning models.
 
@@ -27,7 +27,7 @@ This project delivers an auditable, lightweight diagnostic framework that combin
 
 ---
 
-## 🎯 Business & Strategic Objectives
+## Business & Strategic Objectives
 
 This capstone addresses three critical organizational pillars within the AV industry:
 
@@ -37,7 +37,7 @@ This capstone addresses three critical organizational pillars within the AV indu
 
 ---
 
-## 📊 Dataset & Feature Architecture
+## Dataset & Feature Architecture
 
 ### Data Ingestion & Cleaning
 * **Source Data**: Waymo Open Motion Dataset (v1.2.0), streaming a 10% randomized sample from Google Cloud Storage (GCS) across 6 U.S. cities.
@@ -56,7 +56,7 @@ Features are engineered across three geometric and dynamic categories:
 
 ---
 
-## 🧪 Modeling & Performance Benchmarks
+## Modeling & Performance Benchmarks
 
 All models were evaluated using an **80/20** stratified holdout split (**5,048** training scenarios / **1,263** test scenarios).
 
@@ -76,20 +76,20 @@ All models were evaluated using an **80/20** stratified holdout split (**5,048**
 
 ---
 
-## 🔎 Interpretability & Key Findings
+## Interpretability & Key Findings
 
 * **Speed Variance Drives Risk**: Global SHAP analysis revealed that speed variation among surrounding actors (`velocity_std`) and minimum spatial proximity (`min_inter_agent_dist`) exert stronger pushes on scene complexity than raw vehicle volume alone.
 * **Non-Linear Friction**: Pedestrian density non-linearly peaks in areas with moderate structural complexity (10 to 25 traffic controls/crosswalks) rather than massive multi-lane highway geometries.
 
 ---
 
-## 🛠️ Project Artifact & Web Dashboard
+## Project Artifact & Web Dashboard
 
 The analytical core is operationalized as an interactive **Streamlit** executive dashboard and inspection tool (`app.py`).
 
 [![Waymo Scene Safety Triage Dashboard](images/streamlit_dashboard.png)](https://waymo-scene-safety-triage.streamlit.app/)
 
-> 🚀 **Live Application:** [Launch the Waymo Scene Safety Triage Dashboard](https://waymo-scene-safety-triage.streamlit.app/)
+> **Live Application:** [Launch the Waymo Scene Safety Triage Dashboard](https://waymo-scene-safety-triage.streamlit.app/)
 
 ### Core Features & Workflow
 1. **Dynamic Risk Triage**: Slide risk probability thresholds (e.g., set to 0.75) to filter workloads, quantify false alarm suppression, and calculate engineer hours saved.
@@ -125,7 +125,7 @@ The analytical core is operationalized as an interactive **Streamlit** executive
 
 ---
 
-## 🚀 Installation & Quickstart
+## Installation & Quickstart
 
 ### 1. Prerequisites
 * Python 3.10 or higher
@@ -152,7 +152,7 @@ streamlit run app.py
 
 ---
 
-## 📚 References & Acknowledgments
+## References & Acknowledgments
 
 * **Data Source**: Waymo Open Motion Dataset (v1.2.0).
 * **Key Literature**: Ettinger et al. (2021), Ki et al. (2025), Breiman (2001).
