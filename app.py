@@ -1,4 +1,15 @@
+"""Waymo Autonomous Vehicle Safety Triage Hub Streamlit Application.
+
+This module provides an interactive dashboard for autonomous vehicle (AV)
+safety engineers to triage driving scenarios, perform real-time model
+inference, audit multi-agent motion trajectories, and record validation logs.
+
+Author: Bart Sosa-Teeuwen
+Institution: University of San Diego, Master of Science in Applied Data Science
+"""
+
 import os
+
 import joblib
 import numpy as np
 import pandas as pd
@@ -34,16 +45,20 @@ GCS_VIDEO_BASE_URL = (
 )
 TOTAL_DATASET_COUNT = 6311  # Baseline evaluated fleet dataset count
 TRIAGE_TIME_PER_SCENE_MINS = 3.0  # Estimated review time per scenario
-SAFETY_ENGINEER_HOURLY_RATE = 85.00  # Estimated Waymo AV Safety Engineer hourly rate ($)
+SAFETY_ENGINEER_HOURLY_RATE = 85.00  # Estimated AV Safety Engineer rate ($/hr)
 
 
 # --- LOAD MODEL (.pkl) & DATASET ---
 @st.cache_resource
 def load_ml_model():
-    """Loads serialized model and feature definitions with path fallbacks."""
+    """Loads serialized ML model and feature definitions with path fallbacks.
+
+    Returns:
+        tuple: (model instance or None, feature names list, boolean success flag)
+    """
     model_paths = ["artifacts/rf_model.pkl", "artifacts/waymo_rf_model.pkl"]
     model = None
-    
+
     for path in model_paths:
         if os.path.exists(path):
             try:
@@ -53,7 +68,10 @@ def load_ml_model():
                 continue
 
     try:
-        features = joblib.load("artifacts/model_features.pkl") if os.path.exists("artifacts/model_features.pkl") else EXPANDED_FEATURES
+        if os.path.exists("artifacts/model_features.pkl"):
+            features = joblib.load("artifacts/model_features.pkl")
+        else:
+            features = EXPANDED_FEATURES
     except Exception:
         features = EXPANDED_FEATURES
 
@@ -64,6 +82,11 @@ def load_ml_model():
 
 @st.cache_data
 def load_data():
+    """Loads and preprocesses driving scenario telemetry dataset.
+
+    Returns:
+        pd.DataFrame: Formatted dataframe with risk scores and road contexts.
+    """
     df = pd.read_csv("data/high_risk_scenarios_valid.csv")
     df["scenario_id"] = df["scenario_id"].astype(str).str.strip().str.lower()
 
@@ -113,6 +136,7 @@ page = st.sidebar.radio(
         "Executive Triage Dashboard",
         "Live Scenario Risk Predictor",
         "Visual Inspection & Feedback",
+        "User Guide & Methodology",
     ],
 )
 
@@ -184,7 +208,9 @@ if page == "Executive Triage Dashboard":
     )
 
     # --- METHODOLOGY EXPLAINER EXPANDER ---
-    with st.expander("Methodology: How Review Time & Productivity Cost Saved are Calculated"):
+    with st.expander(
+        "Methodology: How Review Time & Productivity Cost Saved are Calculated"
+    ):
         st.markdown(
             f"""
             * **Evaluated Fleet Load ($N$):** Base dataset of **{TOTAL_DATASET_COUNT:,}** driving scenarios evaluated across the pipeline.
@@ -202,9 +228,9 @@ if page == "Executive Triage Dashboard":
     # --- HIGH-RISK SCENARIOS TABLE ---
     st.subheader("Triaged High-Risk Scenarios (Inspection Sample)")
     st.caption(
-        f"Displaying **{len(filtered_df)}** sample scenarios meeting the current"
-        f" probability threshold of `{min_risk_prob:.2f}` (out of **{len(df)}**"
-        " rendered records)."
+        f"Displaying **{len(filtered_df)}** sample scenarios meeting the"
+        f" current probability threshold of `{min_risk_prob:.2f}` (out of"
+        f" **{len(df)}** rendered records)."
     )
 
     all_columns = [
@@ -345,7 +371,9 @@ elif page == "Live Scenario Risk Predictor":
         st.metric("Predicted Risk Probability", f"{risk_prob:.1%}")
         if risk_prob >= min_risk_prob:
             st.error("CLASSIFICATION: CRITICAL COMPLEXITY")
-            st.caption("Requires safety engineer review and simulation priority.")
+            st.caption(
+                "Requires safety engineer review and simulation priority."
+            )
         else:
             st.success("CLASSIFICATION: STANDARD COMPLEXITY")
             st.caption("Routine driving scene — bypassed from manual review.")
@@ -403,12 +431,20 @@ elif page == "Visual Inspection & Feedback":
 
             if heuristic_score > 0.70 and model_score < 0.40:
                 st.info(
-                    "Filtered False Positive: Heuristic flagged high velocity/proximity, but tree-based model confirmed safe path trajectory."
+                    "Filtered False Positive: Heuristic flagged high velocity"
+                    "/proximity, but tree-based model confirmed safe path"
+                    " trajectory."
                 )
             elif model_score >= 0.80:
-                st.error("Validated High Risk: Critical trajectory conflict probability.")
+                st.error(
+                    "Validated High Risk: Critical trajectory conflict"
+                    " probability."
+                )
             else:
-                st.warning("Moderate Risk: Minor velocity or spatial proximity hazard.")
+                st.warning(
+                    "Moderate Risk: Minor velocity or spatial proximity"
+                    " hazard."
+                )
 
         with top_col2:
             st.subheader("Safety Engineer Validation")
@@ -424,7 +460,10 @@ elif page == "Visual Inspection & Feedback":
                 )
                 engineer_notes = st.text_area(
                     "Safety Engineer Notes:",
-                    placeholder="Enter qualitative observation or active learning feedback...",
+                    placeholder=(
+                        "Enter qualitative observation or active learning"
+                        " feedback..."
+                    ),
                     height=70,
                 )
                 submit_btn = st.form_submit_button("Log Review Entry")
@@ -458,7 +497,7 @@ elif page == "Visual Inspection & Feedback":
                 """,
                 unsafe_allow_html=True,
             )
-            
+
             st.video(video_url, autoplay=True, loop=True)
 
         with bot_col2:
@@ -472,21 +511,26 @@ elif page == "Visual Inspection & Feedback":
             if max_decel < -4.5:
                 primary_driver = "Emergency Hard Braking"
                 explanation = (
-                    f"SDC deceleration of `{max_decel:.1f} m/s²` required to avoid conflict."
+                    f"SDC deceleration of `{max_decel:.1f} m/s²` required to avoid"
+                    " conflict."
                 )
             elif max_vel > 16.0:
                 primary_driver = "High-Speed Corridor Conflict"
                 explanation = (
-                    f"High-speed navigation (`{max_vel * 2.237:.1f} mph`) through dense traffic."
+                    f"High-speed navigation (`{max_vel * 2.237:.1f} mph`) through"
+                    " dense traffic."
                 )
             elif ped_count > 0:
                 primary_driver = "Vulnerable Road User Proximity"
                 explanation = (
-                    f"Interaction with `{int(ped_count)}` pedestrian(s) near ego vehicle."
+                    f"Interaction with `{int(ped_count)}` pedestrian(s) near ego"
+                    " vehicle."
                 )
             else:
                 primary_driver = "Complex Multi-Agent Interaction"
-                explanation = "High multi-agent density at trajectory intersection."
+                explanation = (
+                    "High multi-agent density at trajectory intersection."
+                )
 
             st.markdown(f"**Driver:** {primary_driver}")
             st.caption(explanation)
@@ -495,7 +539,9 @@ elif page == "Visual Inspection & Feedback":
             t_col1, t_col2, t_col3 = st.columns(3)
             t_col1.metric("Max Velocity", f"{max_vel * 2.237:.1f} mph")
             t_col2.metric("Max Decel", f"{max_decel:.1f} m/s²")
-            t_col3.metric("Surrounding Agents", f"{int(veh_count + ped_count)}")
+            t_col3.metric(
+                "Surrounding Agents", f"{int(veh_count + ped_count)}"
+            )
             st.caption(f"Road Context: **{scene_info.get('road_context')}**")
 
         st.divider()
@@ -522,3 +568,68 @@ elif page == "Visual Inspection & Feedback":
                 "No human reviews logged in current session. Submit a decision"
                 " above to populate the audit table."
             )
+
+
+# ==============================================================================
+# PAGE 4: USER GUIDE & METHODOLOGY
+# ==============================================================================
+elif page == "User Guide & Methodology":
+    st.title("User Guide & Operational Framework")
+    st.markdown(
+        "System Architecture, Responsible AI Guidelines, and Decision Support"
+        " Framework"
+    )
+    st.divider()
+
+    guide_col1, guide_col2 = st.columns(2)
+
+    with guide_col1:
+        st.subheader("🎯 Target Stakeholder & Task")
+        st.markdown(
+            """
+            * **Target User:** Autonomous Vehicle (AV) Safety Operations Engineers and Fleet Triage Teams.
+            * **Core Task:** Screening 10-Hz multi-agent trajectory telemetry from Waymo Open Motion Dataset scenarios.
+            * **Operational Objective:** Automate false-alarm filtering for routine driving while surfacing complex, high-risk scenarios (~10% volume) for human inspection.
+            * **Decision Support:** Enables safety engineers to audit model predictions, inspect motion hazards, and log qualitative active-learning feedback.
+            """
+        )
+
+    with guide_col2:
+        st.subheader("⚙️ System Navigation & Workflow")
+        st.markdown(
+            """
+            1. **Executive Triage Dashboard:** View fleet-wide metrics, review time savings, and productivity cost-benefit calculations based on threshold settings.
+            2. **Live Scenario Risk Predictor:** Conduct real-time inference and sensitivity analysis on custom traffic, infrastructure, and dynamic kinematic parameters.
+            3. **Visual Inspection & Feedback:** Audit video playbacks, dual-validation metrics, and record engineer validation logs in session memory.
+            4. **Threshold Controls:** Adjust the risk probability slider in the sidebar (Default: `0.25`) to tune triage sensitivity and scenario review volume.
+            """
+        )
+
+    st.divider()
+
+    st.subheader("🧠 Responsible & Explainable AI Framework")
+
+    with st.expander(
+        "🔍 **Feature Importance & Interpretability (SHAP)**", expanded=True
+    ):
+        st.markdown(
+            """
+            The underlying classification engine uses a **Random Forest Classifier** trained on spatial-temporal interaction features. Key predictive drivers include:
+            * **Velocity Standard Deviation (`velocity_std`):** Quantifies velocity fluctuations and sudden braking maneuvers.
+            * **Minimum Inter-Agent Proximity (`min_inter_agent_dist`):** Tracks physical clearance to surrounding road actors (pedestrians, cyclists, vehicles).
+            * **Map & Infrastructure Friction:** Measures junction density, crosswalk counts, lane geometry, and stop-sign interactions.
+            """
+        )
+
+    with st.expander(
+        "⚖️ **Usage Guidance & Human-in-the-Loop Safeguards**", expanded=True
+    ):
+        st.markdown(
+            """
+            > **Operational Note:** This tool serves as an active triage screening layer and is **not** an automated vehicle control system or certified collision predictor.
+
+            * **Boundary Auditing:** Scenarios scoring near the triage threshold should be audited manually using the Visual Inspection view.
+            * **Engineer Override:** Safety officers maintain full authority to reclassify scenarios and prioritize deep physics re-simulation.
+            * **Audit Trail:** Feedback logged during active sessions is stored in session state to inform active-learning model retraining pipelines.
+            """
+        )
