@@ -571,65 +571,105 @@ elif page == "Visual Inspection & Feedback":
 
 
 # ==============================================================================
-# PAGE 4: USER GUIDE & METHODOLOGY
+# PAGE 4: USER GUIDE & METHODOLOGY (APA 7 STYLED & READER FRIENDLY)
 # ==============================================================================
 elif page == "User Guide & Methodology":
     st.title("User Guide & Operational Framework")
     st.markdown(
-        "System Architecture, Responsible AI Guidelines, and Decision Support"
-        " Framework"
+        "System Architecture, Model Interpretability, and Safety Governance"
     )
     st.divider()
 
-    guide_col1, guide_col2 = st.columns(2)
+    # --- SECTION 1: EXECUTIVE SUMMARY ---
+    st.header("Executive Summary and Purpose")
+    st.markdown(
+        """
+        Autonomous vehicles generate massive amounts of driving data every second. 
+        Reviewing every single driving scenario manually creates a significant bottleneck 
+        for safety engineering teams. 
 
-    with guide_col1:
-        st.subheader("Target Stakeholder & Task")
+        This dashboard functions as an **automated triage assistant**. By using machine 
+        learning to identify and filter out routine, safe driving events, the system directs 
+        human review efforts toward complex or high-risk situations that require expert evaluation.
+        """
+    )
+
+    st.divider()
+
+    # --- SECTION 2: SYSTEM NAVIGATION ---
+    st.header("System Navigation and Workflow")
+
+    nav_col1, nav_col2 = st.columns(2)
+
+    with nav_col1:
+        st.subheader("Executive Triage Dashboard")
         st.markdown(
             """
-            * **Target User:** Autonomous Vehicle (AV) Safety Operations Engineers and Fleet Triage Teams.
-            * **Core Task:** Screening 10-Hz multi-agent trajectory telemetry from Waymo Open Motion Dataset scenarios.
-            * **Operational Objective:** Automate false-alarm filtering for routine driving while surfacing complex, high-risk scenarios (~10% volume) for human inspection.
-            * **Decision Support:** Enables safety engineers to audit model predictions, inspect motion hazards, and log qualitative active-learning feedback.
+            * **Primary Purpose:** Displays high-level productivity metrics across the fleet.
+            * **Key Insight:** Shows the estimated hours and operational costs saved by bypassing low-risk scenarios.
             """
         )
 
-    with guide_col2:
-        st.subheader("System Navigation & Workflow")
+        st.subheader("Live Scenario Risk Predictor")
         st.markdown(
             """
-            1. **Executive Triage Dashboard:** View fleet-wide metrics, review time savings, and productivity cost-benefit calculations based on threshold settings.
-            2. **Live Scenario Risk Predictor:** Conduct real-time inference and sensitivity analysis on custom traffic, infrastructure, and dynamic kinematic parameters.
-            3. **Visual Inspection & Feedback:** Audit video playbacks, dual-validation metrics, and record engineer validation logs in session memory.
-            4. **Threshold Controls:** Adjust the risk probability slider in the sidebar (Default: `0.25`) to tune triage sensitivity and scenario review volume.
+            * **Primary Purpose:** Simulates safety risk for custom traffic scenarios.
+            * **Key Insight:** Allows users to adjust variables like speed, pedestrian count, or lane layout to observe real-time risk predictions.
+            """
+        )
+
+    with nav_col2:
+        st.subheader("Visual Inspection & Feedback")
+        st.markdown(
+            """
+            * **Primary Purpose:** Enables detailed human review of flagged events.
+            * **Key Insight:** Displays trajectory video recordings, detailed vehicle metrics, and a logging form to submit qualitative feedback.
+            """
+        )
+
+        st.subheader("Sidebar Risk Controls")
+        st.markdown(
+            """
+            * **Primary Purpose:** Adjusts the strictness of the screening filter.
+            * **Key Insight:** Lowering the threshold includes more scenarios for review; raising it focuses exclusively on critical risks.
             """
         )
 
     st.divider()
 
-    st.subheader("Responsible & Explainable AI Framework")
+    # --- SECTION 3: MODEL INTERPRETABILITY ---
+    st.header("Understanding Model Predictions")
+    st.markdown(
+        """
+        The risk prediction model evaluates detailed motion telemetry (vehicle movements recorded 
+        10 times per second). To maintain transparency, the model bases its decisions on clear physical 
+        and environmental factors:
+        """
+    )
 
     with st.expander(
-        "**Feature Importance & Interpretability (SHAP)**", expanded=True
+        "Primary Drivers of Predicted Safety Risk", expanded=True
     ):
         st.markdown(
             """
-            The underlying classification engine uses a **Random Forest Classifier** trained on spatial-temporal interaction features. Key predictive drivers include:
-            * **Velocity Standard Deviation (`velocity_std`):** Quantifies velocity fluctuations and sudden braking maneuvers.
-            * **Minimum Inter-Agent Proximity (`min_inter_agent_dist`):** Tracks physical clearance to surrounding road actors (pedestrians, cyclists, vehicles).
-            * **Map & Infrastructure Friction:** Measures junction density, crosswalk counts, lane geometry, and stop-sign interactions.
+            * **Speed Variations (`velocity_std`):** Rapid changes in speed or sudden hard braking indicate unpredictable traffic conditions and elevate risk.
+            * **Physical Proximity (`min_inter_agent_dist`):** Closer physical distances between the autonomous vehicle and pedestrians, cyclists, or cars increase hazard probability.
+            * **Environmental Friction:** Navigating dense intersections, frequent crosswalks, or complex multi-lane roads creates higher scenario complexity.
             """
         )
 
-    with st.expander(
-        "**Usage Guidance & Human-in-the-Loop Safeguards**", expanded=True
-    ):
+    st.divider()
+
+    # --- SECTION 4: GOVERNANCE & RESPONSIBLE AI ---
+    st.header("Safety Governance and Human Oversight")
+
+    with st.expander("Operational Guidelines and Policy", expanded=True):
         st.markdown(
             """
-            > **Operational Note:** This tool serves as an active triage screening layer and is **not** an automated vehicle control system or certified collision predictor.
+            > **Policy Statement:** This software operates strictly as a decision-support system. It does not issue direct control commands to vehicles or replace certified safety evaluations.
 
-            * **Boundary Auditing:** Scenarios scoring near the triage threshold should be audited manually using the Visual Inspection view.
-            * **Engineer Override:** Safety officers maintain full authority to reclassify scenarios and prioritize deep physics re-simulation.
-            * **Audit Trail:** Feedback logged during active sessions is stored in session state to inform active-learning model retraining pipelines.
+            * **Human-in-the-Loop Authority:** Safety engineers retain total decision-making control to confirm, override, or reclassify any automated model output.
+            * **Continuous Improvement:** Decisions logged in the *Visual Inspection* module are saved to continuously retrain and refine future machine learning models.
+            * **Boundary Auditing:** Scenarios with risk scores close to the triage threshold are regularly audited to ensure fairness and prevent misclassifications.
             """
         )
